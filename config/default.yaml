@@ -1,0 +1,67 @@
+# OHE System — Default Configuration
+# All values can be overridden via environment variables or a local config.yaml
+
+ingestion:
+  # Target playback FPS for processing (0 = native video FPS)
+  target_fps: 0
+  # Frame skip: process every Nth frame (1 = every frame)
+  frame_skip: 1
+
+processing:
+  # Region of Interest: [x, y, width, height] in pixels (null = full frame)
+  roi: null
+  # CLAHE clip limit for contrast enhancement
+  clahe_clip_limit: 2.0
+  clahe_tile_grid_size: [8, 8]
+  # Gaussian blur kernel size (must be odd)
+  blur_kernel_size: 5
+  # Canny edge thresholds
+  canny_threshold1: 50
+  canny_threshold2: 150
+  # Hough line detection parameters
+  hough_rho: 1
+  hough_theta_deg: 1.0
+  hough_threshold: 80
+  hough_min_line_length: 50
+  hough_max_line_gap: 10
+  # Min confidence to accept a wire detection (0.0 – 1.0)
+  min_detection_confidence: 0.5
+
+calibration:
+  # Path to calibration JSON file (relative to project root)
+  file: "config/calibration.json"
+  # Fallback scale if calibration file is missing (pixels per mm)
+  fallback_px_per_mm: 10.0
+
+rules:
+  stagger:
+    # Maximum allowed stagger in either direction (mm)
+    warning_mm: 150.0
+    critical_mm: 200.0
+  diameter:
+    # Wire diameter acceptable range (mm)
+    min_warning_mm: 10.0
+    min_critical_mm: 8.0
+    max_warning_mm: 15.0
+    max_critical_mm: 17.0
+
+logging:
+  # Directory for session output (created automatically)
+  session_dir: "data/sessions"
+  # Enable/disable individual outputs
+  sqlite_enabled: true
+  csv_enabled: true
+  # Max rows before CSV rolls over to a new file
+  csv_max_rows: 100000
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  log_level: "INFO"
+
+ui:
+  # Window geometry
+  window_width: 1440
+  window_height: 900
+  # Chart history: number of data points to display on live charts
+  chart_history_frames: 500
+  # Overlay colour for wire bounding box (BGR)
+  overlay_wire_colour: [0, 255, 0]
+  overlay_centre_colour: [0, 0, 255]

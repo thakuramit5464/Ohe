@@ -1,0 +1,21 @@
+{
+  "_comment": "Camera calibration parameters. px_per_mm is the primary scale factor.",
+  "camera_id": "default",
+  "px_per_mm": 10.0,
+  "image_width_px": 1920,
+  "image_height_px": 1080,
+  "track_centre_x_px": 960,
+  "distortion": {
+    "_comment": "OpenCV camera matrix and distortion coefficients. Set use_undistort: true to enable.",
+    "use_undistort": false,
+    "fx": 1000.0,
+    "fy": 1000.0,
+    "cx": 960.0,
+    "cy": 540.0,
+    "k1": 0.0,
+    "k2": 0.0,
+    "p1": 0.0,
+    "p2": 0.0,
+    "k3": 0.0
+  }
+}

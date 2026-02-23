@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.user
+
+# Test & coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Data (large files)
+data/sample_videos/*.mp4
+data/sample_videos/*.avi
+data/sample_videos/*.mkv
+data/sessions/
+
+# Config secrets / local overrides
+.env
+config/local.yaml
+
+# PyInstaller
+*.spec
+dist/
