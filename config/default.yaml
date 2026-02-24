@@ -8,24 +8,25 @@ ingestion:
   frame_skip: 1
 
 processing:
-  # Region of Interest: [x, y, width, height] in pixels (null = full frame)
-  roi: null
+  # Region of Interest [x, y, width, height] — targets contact wire zone.
+  # For 640x360 OHE video: exclude text overlay (top ~70px) and pantograph/track below y=230.
+  roi: [0, 70, 640, 160]
   # CLAHE clip limit for contrast enhancement
   clahe_clip_limit: 2.0
   clahe_tile_grid_size: [8, 8]
   # Gaussian blur kernel size (must be odd)
   blur_kernel_size: 5
   # Canny edge thresholds
-  canny_threshold1: 50
-  canny_threshold2: 150
+  canny_threshold1: 30
+  canny_threshold2: 100
   # Hough line detection parameters
   hough_rho: 1
   hough_theta_deg: 1.0
-  hough_threshold: 80
-  hough_min_line_length: 50
-  hough_max_line_gap: 10
-  # Min confidence to accept a wire detection (0.0 – 1.0)
-  min_detection_confidence: 0.5
+  hough_threshold: 40
+  hough_min_line_length: 30
+  hough_max_line_gap: 20
+  # Min confidence to accept a wire detection (0.0 – 1.0); ROI-relative
+  min_detection_confidence: 0.2
 
 calibration:
   # Path to calibration JSON file (relative to project root)

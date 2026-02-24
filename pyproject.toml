@@ -19,6 +19,8 @@ dependencies = [
     "click>=8.1.7",
     "PyQt6>=6.6.0",
     "pyqtgraph>=0.13.3",
+    "scipy>=1.12.0",
+    "tqdm>=4.66.0",
 ]
 
 [project.optional-dependencies]
@@ -30,7 +32,8 @@ dev = [
 ]
 
 [project.scripts]
-ohe = "ohe.cli:main"
+ohe     = "ohe.cli:main"
+ohe-gui = "ohe.ui.app:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ohe"]

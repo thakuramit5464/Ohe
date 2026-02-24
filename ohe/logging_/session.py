@@ -87,7 +87,7 @@ class SessionLogger:
         self._session_id = f"{ts}_{uuid.uuid4().hex[:6]}"
         self._db_path = self._session_dir / f"{self._session_id}.sqlite"
 
-        self._conn = sqlite3.connect(str(self._db_path))
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.executescript(_DDL)
         self._conn.commit()
 
