@@ -73,7 +73,7 @@ python tools/debug_visualiser.py --video data\sample_videos\overlap.mp4 --every 
 | `config/default.yaml` | ROI, Canny/Hough params, rules thresholds, paths |
 | `config/calibration.json` | px/mm scale factor per camera setup |
 
-**In-GUI**: `Tools → Settings…` (Ctrl+,) opens the settings dialog.  
+**In-GUI**: `Tools → Settings…` (Ctrl+,) opens the settings dialog.
 **In-GUI**: `Tools → Calibration Wizard…` walks you through computing px/mm from a reference frame.
 
 ## Project Structure
@@ -90,17 +90,38 @@ ohe/
 tools/
 └── debug_visualiser.py   # Annotated MP4 + PNG frames + CSV for parameter tuning
 scripts/
-└── build_exe.ps1          # One-click PyInstaller build
+├── build_exe.ps1        # PyInstaller bundle only
+└── build_installer.ps1  # Full pipeline: tests → PyInstaller → Inno Setup
+installer/
+├── ohe_setup.iss        # Inno Setup 6 script
+└── README.md            # Installer build guide
+assets/
+└── icon.ico             # App icon (replace placeholder)
 ```
 
-## Build Executable
+## Build Standalone Executable
 
 ```powershell
-# Produces dist\ohe-gui\ohe-gui.exe  (~auto-bundled with config/)
+# PyInstaller bundle only (no installer needed, just zip & share)
 .\scripts\build_exe.ps1
+# → dist\ohe-gui\ohe-gui.exe
 ```
 
-> Requires `pip install pyinstaller` in the venv (the script installs it automatically).
+## Build Windows Installer
+
+Requires free [Inno Setup 6](https://jrsoftware.org/isinfo.php).
+
+```powershell
+# One command: runs tests → PyInstaller → compiles setup wizard
+.\scripts\build_installer.ps1
+# → installer\Output\OHE_Setup_1.0.0.exe
+```
+
+The installer gives end-users a **Next/Install/Finish** setup wizard,
+Start Menu shortcut, optional Desktop shortcut, optional `.mp4` association,
+and a clean uninstaller — **no Python required** on their machine.
+
+See [`installer/README.md`](installer/README.md) for full details.
 
 ## Development Phases
 

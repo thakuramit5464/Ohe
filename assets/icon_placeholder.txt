@@ -1,0 +1,7 @@
+# assets/icon.ico placeholder
+# Replace this file with a real .ico (256x256, 48x48, 32x32, 16x16 multi-size)
+# before building the installer.
+#
+# Free tools to create .ico files:
+#   • https://icoconvert.com/   (online, paste any PNG)
+#   • ImageMagick: convert icon.png -define icon:auto-resize=256,48,32,16 icon.ico
