@@ -4,18 +4,23 @@ A production-ready Windows-based software for measuring **OHE contact wire stagg
 
 ## Features
 
-- 📹 Offline video processing (file-based input)
+- 📹 Offline video processing (MP4/AVI/MKV)
 - 📏 Real-time stagger (mm) and diameter (mm) measurement
-- ⚠️ Configurable anomaly detection with thresholds
-- 📊 Live charts (stagger / diameter over time)
-- 🗃️ Session logging to SQLite + CSV export
-- 🖥️ PyQt6 GUI with video overlay and alert panel
-- ⌨️ Headless CLI mode for batch processing
+- ⚠️  Configurable anomaly detection with WARNING/CRITICAL thresholds
+- 📊 Live scrolling pyqtgraph plots (stagger + diameter traces with threshold bands)
+- 🗃️  SQLite session logging + CSV/JSON export after every run
+- 🖥️  PyQt6 GUI — video panel, metric cards, anomaly log, menu bar
+- ⚙️  In-GUI settings dialog (ROI, Canny, Hough, rules) — no YAML editing needed
+- 🎯  Calibration wizard — point-click any two reference points → compute px/mm
+- ⌨️  Headless CLI (`ohe process`) with tqdm progress bar and auto-export
 
 ## Architecture
 
 ```
-Video → Ingestion → Pre-Process → Detect → Measure → Rules → DataBus → UI / Logs
+Video → Ingestion → PreProcess → Detect → Measure → Rules → DataBus → UI / Logs
+           │            │          │         │          │
+        VideoFile    ROI/CLAHE  Hough+    px→mm    Stagger/       SQLite
+        Provider      /Blur    Gaussian  Calibr.   Diameter       + CSV
 ```
 
 ## Quick Start
@@ -33,47 +38,76 @@ python -m venv .venv
 pip install -e ".[dev]"
 ```
 
-### 3. Run tests
+### 3. Run tests (76 tests)
 
 ```powershell
-pytest tests/ -v --cov=ohe
+pytest tests/ -v
 ```
 
-### 4. Process a video (CLI)
+### 4. Launch the GUI
 
 ```powershell
-ohe process --video data/sample_videos/test.mp4 --output data/sessions/out.csv
+ohe-gui                                               # blank start
+ohe-gui data\sample_videos\overlap_first4s_looped.mp4 # auto-load video
 ```
 
-### 5. Launch GUI
+### 5. Process headless (CLI)
 
 ```powershell
-python -m ohe.ui.app
+ohe process --video data\sample_videos\overlap_first4s_looped.mp4
+ohe sessions          # list all saved sessions
+ohe export --db data\sessions\<id>.sqlite   # re-export a session
+```
+
+### 6. Debug visualiser (parameter tuning)
+
+```powershell
+python tools/debug_visualiser.py --video data\sample_videos\overlap.mp4 --every 1
+# outputs: data/debug/<timestamp>/annotated.mp4 + frame_XXXX.png + summary.csv
 ```
 
 ## Configuration
 
-Edit `config/default.yaml` to adjust thresholds, ROI, and logging paths.  
-Edit `config/calibration.json` to set pixel-per-mm scale factors per camera.
+| File | Purpose |
+|---|---|
+| `config/default.yaml` | ROI, Canny/Hough params, rules thresholds, paths |
+| `config/calibration.json` | px/mm scale factor per camera setup |
+
+**In-GUI**: `Tools → Settings…` (Ctrl+,) opens the settings dialog.  
+**In-GUI**: `Tools → Calibration Wizard…` walks you through computing px/mm from a reference frame.
 
 ## Project Structure
 
 ```
 ohe/
-├── core/         # Models, config, DataBus, exceptions
-├── ingestion/    # Frame providers (video file, camera stub)
-├── processing/   # Pre-process, detect, measure, calibrate, pipeline
-├── rules/        # Threshold config + anomaly engine
-├── logging_/     # SQLite session, CSV writer, export
-└── ui/           # PyQt6 GUI (main window + panels)
+├── core/         # Models, config (Pydantic), DataBus, exceptions
+├── ingestion/    # VideoFileProvider, CameraProvider (stub)
+├── processing/   # PreProcess, WireDetector (Hough+Gaussian FWHM), Calibration, Pipeline
+├── rules/        # Threshold config + RulesEngine (anomaly generation)
+├── logging_/     # SessionLogger (SQLite), CsvWriter, LogWorker (thread), SessionExporter
+└── ui/           # PyQt6: MainWindow, VideoPanel, PlotPanel, AnomalyPanel,
+                  #        PipelineWorker (QThread), ConfigDialog, CalibrationWizard
+tools/
+└── debug_visualiser.py   # Annotated MP4 + PNG frames + CSV for parameter tuning
+scripts/
+└── build_exe.ps1          # One-click PyInstaller build
 ```
+
+## Build Executable
+
+```powershell
+# Produces dist\ohe-gui\ohe-gui.exe  (~auto-bundled with config/)
+.\scripts\build_exe.ps1
+```
+
+> Requires `pip install pyinstaller` in the venv (the script installs it automatically).
 
 ## Development Phases
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 1 | Core foundation, ingestion, preprocessing | ✅ In Progress |
-| 2 | Detection & measurement engine | 🔲 Planned |
-| 3 | Rules engine & logging | 🔲 Planned |
-| 4 | PyQt6 UI | 🔲 Planned |
-| 5 | Polish, config UI, packaging | 🔲 Planned |
+| 1 | Core foundation, ingestion, preprocessing | ✅ Complete |
+| 2 | Detection & measurement engine, debug visualiser | ✅ Complete |
+| 3 | Rules engine, threaded logging, CLI with progress bar | ✅ Complete |
+| 4 | PyQt6 GUI shell (video panel, plots, anomaly log) | ✅ Complete |
+| 5 | Settings dialog, calibration wizard, PyInstaller packaging | ✅ Complete |

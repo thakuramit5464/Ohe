@@ -47,6 +47,8 @@ from ohe.core.models import Anomaly, Measurement
 from ohe.logging_.export import SessionExporter
 from ohe.processing.calibration import CalibrationModel
 from ohe.ui.anomaly_panel import AnomalyPanel
+from ohe.ui.calibration_wizard import CalibrationWizard
+from ohe.ui.config_dialog import ConfigDialog
 from ohe.ui.plot_panel import PlotPanel
 from ohe.ui.pipeline_worker import PipelineWorker
 from ohe.ui.video_panel import VideoPanel
@@ -71,8 +73,49 @@ class MainWindow(QMainWindow):
         self._video_path: str | None = None
 
         self._build_toolbar()
+        self._build_menu()
         self._build_central()
         self._build_statusbar()
+
+    # ------------------------------------------------------------------
+    # Build UI
+    # ------------------------------------------------------------------
+
+    def _build_menu(self) -> None:
+        menubar = self.menuBar()
+        menubar.setStyleSheet(
+            f"background-color: {Palette.BG_PANEL}; color: {Palette.TEXT};"
+        )
+
+        # File menu
+        file_menu = menubar.addMenu("File")
+        act_open = file_menu.addAction("Open Video…")
+        act_open.triggered.connect(self._on_open)
+        file_menu.addSeparator()
+        act_export_m = file_menu.addAction("Export Last Session…")
+        act_export_m.triggered.connect(self._on_export)
+        file_menu.addSeparator()
+        act_quit = file_menu.addAction("Quit")
+        act_quit.triggered.connect(self.close)
+
+        # Tools menu
+        tools_menu = menubar.addMenu("Tools")
+        act_settings = tools_menu.addAction("Settings…")
+        act_settings.setShortcut("Ctrl+,")
+        act_settings.triggered.connect(self._on_settings)
+
+        act_calibrate = tools_menu.addAction("Calibration Wizard…")
+        act_calibrate.triggered.connect(self._on_calibrate)
+
+        tools_menu.addSeparator()
+        act_debug = tools_menu.addAction("Open Debug Visualiser (CLI)")
+        act_debug.triggered.connect(self._on_debug_hint)
+
+        # Help menu
+        help_menu = menubar.addMenu("Help")
+        act_about = help_menu.addAction("About")
+        act_about.triggered.connect(self._on_about)
+
 
     # ------------------------------------------------------------------
     # Build UI
@@ -217,6 +260,44 @@ class MainWindow(QMainWindow):
         if self._worker:
             self._worker.request_stop()
         self._act_stop.setEnabled(False)
+
+    def _on_settings(self) -> None:
+        dlg = ConfigDialog(self._cfg, parent=self)
+        if dlg.exec() and self._worker and self._worker.isRunning():
+            QMessageBox.information(
+                self, "Settings Applied",
+                "New settings will take effect from the next Start."
+            )
+
+    def _on_calibrate(self) -> None:
+        wizard = CalibrationWizard(
+            video_path=self._video_path,
+            parent=self
+        )
+        if wizard.exec() and wizard.result_calibration:
+            self._cal = wizard.result_calibration
+            QMessageBox.information(
+                self, "Calibration Updated",
+                f"px/mm = {self._cal.px_per_mm:.4f}\n"
+                f"Calibration saved to config/calibration.json"
+            )
+
+    def _on_debug_hint(self) -> None:
+        QMessageBox.information(
+            self, "Debug Visualiser",
+            "Run from a PowerShell terminal:\n\n"
+            ".venv\\Scripts\\python.exe tools/debug_visualiser.py "
+            "--video <your_video.mp4>"
+        )
+
+    def _on_about(self) -> None:
+        QMessageBox.about(
+            self, "About OHE",
+            "<b>OHE Stagger &amp; Wire Diameter Measurement</b><br>"
+            "Version 0.1.0 — Phase 5<br><br>"
+            "Classical computer-vision pipeline for overhead equipment inspection.<br>"
+            "Built with OpenCV, scipy, PyQt6, pyqtgraph."
+        )
 
     def _on_export(self) -> None:
         sessions = sorted(

@@ -1,0 +1,38 @@
+{
+    "version": "0.2.1",
+    "defaults": {},
+    "configurations": [
+        {
+            "type": "python",
+            "interpreter": "C:\\Users\\Amit\\Documents\\GITHUB\\Ohe\\.venv\\Scripts\\python.exe",
+            "startupFile": "ohe\\ui\\app.py",
+            "name": "OHE GUI",
+            "args": "data\\sample_videos\\overlap_first4s_looped.mp4",
+            "workingDirectory": "${workspaceRoot}"
+        },
+        {
+            "type": "python",
+            "interpreter": "C:\\Users\\Amit\\Documents\\GITHUB\\Ohe\\.venv\\Scripts\\python.exe",
+            "startupFile": "ohe\\cli.py",
+            "name": "OHE CLI — process video",
+            "args": "process --video data\\sample_videos\\overlap_first4s_looped.mp4 --log-level INFO",
+            "workingDirectory": "${workspaceRoot}"
+        },
+        {
+            "type": "python",
+            "interpreter": "C:\\Users\\Amit\\Documents\\GITHUB\\Ohe\\.venv\\Scripts\\python.exe",
+            "startupFile": "tools\\debug_visualiser.py",
+            "name": "Debug Visualiser",
+            "args": "--video data\\sample_videos\\overlap_first4s_looped.mp4 --every 15",
+            "workingDirectory": "${workspaceRoot}"
+        },
+        {
+            "type": "python",
+            "interpreter": "C:\\Users\\Amit\\Documents\\GITHUB\\Ohe\\.venv\\Scripts\\python.exe",
+            "module": "pytest",
+            "name": "Run All Tests",
+            "args": "tests\\ -v --tb=short",
+            "workingDirectory": "${workspaceRoot}"
+        }
+    ]
+}
