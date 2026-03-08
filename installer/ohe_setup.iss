@@ -38,7 +38,7 @@ AllowNoIcons=no
 
 ; ---- Output ----
 OutputDir={#MyOutputDir}
-OutputBaseFilename=OHE_Setup_{#MyAppVersion}
+OutputBaseFilename=OHE_Setup_{#MyAppVersion}_Admin
 ; SetupIconFile=assets\icon.ico          ; Uncomment after adding assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
@@ -55,8 +55,7 @@ DisableDirPage=no
 DisableReadyPage=no
 
 ; ---- Privileges ----
-PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequired=admin
 
 ; ---- Minimum OS ----
 MinVersion=10.0.17763

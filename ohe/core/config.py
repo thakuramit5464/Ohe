@@ -22,8 +22,38 @@ from ohe.core.exceptions import ConfigError
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_CONFIG = _PROJECT_ROOT / "config" / "default.yaml"
+
+def _resolve_project_root() -> Path:
+    """
+    Return the application install directory (parent of the .exe).
+
+    - Frozen (PyInstaller one-dir): directory that contains ohe-gui.exe
+    - Normal Python run: two parents above this source file (project root)
+    """
+    import sys
+    if getattr(sys, "frozen", False):
+        # sys.executable is  <install_dir>/ohe-gui.exe
+        return Path(sys.executable).resolve().parent
+    # Dev / editable install: …/ohe/core/config.py  →  parents[2] is project root
+    return Path(__file__).resolve().parents[2]
+
+
+def _resolve_bundle_root() -> Path:
+    """
+    Return the directory where PyInstaller placed the bundled read-only data.
+
+    - Frozen (PyInstaller COLLECT one-dir): sys._MEIPASS  →  <install_dir>/_internal/
+    - Normal Python run: same as project root
+    """
+    import sys
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return _resolve_project_root()
+
+
+_PROJECT_ROOT  = _resolve_project_root()
+_BUNDLE_ROOT   = _resolve_bundle_root()   # where bundled datas (config/*.yaml) live
+_DEFAULT_CONFIG = _BUNDLE_ROOT / "config" / "default.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -108,14 +138,44 @@ class AppConfig(BaseModel):
     ui: UIConfig = UIConfig()
 
     def calibration_path(self) -> Path:
-        """Resolve calibration file path relative to project root."""
+        """Resolve calibration file path.
+
+        - Frozen exe: writable copy in %APPDATA%\\OHE\\calibration.json
+          (falls back to bundled read-only template if the user copy is absent).
+        - Dev run  : relative to project root as before.
+        """
+        import sys
         p = Path(self.calibration.file)
-        return p if p.is_absolute() else _PROJECT_ROOT / p
+        if p.is_absolute():
+            return p
+        if getattr(sys, "frozen", False):
+            appdata = Path.home() / "AppData" / "Roaming" / "OHE"
+            appdata.mkdir(parents=True, exist_ok=True)
+            user_path = appdata / p.name
+            if not user_path.exists():
+                # Copy the bundled read-only template on first run
+                bundled = _BUNDLE_ROOT / p
+                if bundled.exists():
+                    import shutil
+                    shutil.copy2(bundled, user_path)
+            return user_path
+        return _PROJECT_ROOT / p
 
     def session_dir_path(self) -> Path:
-        """Resolve session directory relative to project root."""
+        """Resolve session directory.
+
+        - Frozen exe: %APPDATA%\\OHE\\sessions  (writable by standard users).
+        - Dev run  : relative to project root as before.
+        """
+        import sys
         p = Path(self.logging.session_dir)
-        return p if p.is_absolute() else _PROJECT_ROOT / p
+        if p.is_absolute():
+            return p
+        if getattr(sys, "frozen", False):
+            sessions = Path.home() / "AppData" / "Roaming" / "OHE" / "sessions"
+            sessions.mkdir(parents=True, exist_ok=True)
+            return sessions
+        return _PROJECT_ROOT / p
 
 
 # ---------------------------------------------------------------------------
