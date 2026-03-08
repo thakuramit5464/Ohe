@@ -4,6 +4,7 @@ logging_/export.py
 Session export: reads a completed SQLite session and writes:
   * ``<session_id>_export.csv``    — full per-frame measurements table
   * ``<session_id>_summary.json``  — aggregated session statistics
+  * ``<session_id>_events.json``   — per-event details with geo + clip path
 
 Can be called programmatically or via ``ohe session export`` CLI command.
 """
@@ -49,7 +50,11 @@ class SessionExporter:
                 m.confidence,
                 m.wire_bbox,
                 GROUP_CONCAT(a.anomaly_type, ';') AS anomaly_types,
-                GROUP_CONCAT(a.severity, ';')     AS anomaly_severities
+                GROUP_CONCAT(a.severity, ';')     AS anomaly_severities,
+                MAX(a.latitude)                   AS latitude,
+                MAX(a.longitude)                  AS longitude,
+                MAX(a.speed_kmh)                  AS speed_kmh,
+                MAX(a.video_clip)                 AS video_clip
             FROM measurements m
             LEFT JOIN anomalies a
                 ON m.session_id = a.session_id
@@ -65,6 +70,7 @@ class SessionExporter:
             writer.writerow([
                 "frame_id", "timestamp_ms", "stagger_mm", "diameter_mm",
                 "confidence", "wire_bbox", "anomaly_types", "anomaly_severities",
+                "latitude", "longitude", "speed_kmh", "video_clip",
             ])
             for r in rows:
                 writer.writerow([
@@ -76,6 +82,10 @@ class SessionExporter:
                     r["wire_bbox"] or "",
                     r["anomaly_types"] or "",
                     r["anomaly_severities"] or "",
+                    f"{r['latitude']:.6f}" if r["latitude"] is not None else "",
+                    f"{r['longitude']:.6f}" if r["longitude"] is not None else "",
+                    f"{r['speed_kmh']:.1f}" if r["speed_kmh"] is not None else "",
+                    r["video_clip"] or "",
                 ])
         logger.info("Exported %d rows to %s", len(rows), out)
         return out
@@ -119,17 +129,18 @@ class SessionExporter:
 
         summary: dict[str, Any] = {
             "session": {
-                "session_id": session["session_id"],
-                "source": session["source"],
+                "session_id":    session["session_id"],
+                "source":        session["source"],
                 "started_at_ms": session["started_at_ms"],
-                "ended_at_ms": session["ended_at_ms"],
-                "total_frames": session["total_frames"],
+                "ended_at_ms":   session["ended_at_ms"],
+                "total_frames":  session["total_frames"],
                 "anomaly_count": session["anomaly_count"],
+                "event_clip_count": session["event_clip_count"] if "event_clip_count" in session.keys() else 0,
             },
             "detection": {
                 "frames_with_measurement": stats["frames_with_stagger"],
-                "detection_rate_pct": round(detection_rate, 2),
-                "avg_confidence": round(stats["avg_confidence"] or 0, 4),
+                "detection_rate_pct":      round(detection_rate, 2),
+                "avg_confidence":          round(stats["avg_confidence"] or 0, 4),
             },
             "stagger_mm": {
                 "avg": round(stats["avg_stagger_mm"] or 0, 3),
@@ -151,8 +162,93 @@ class SessionExporter:
         logger.info("Summary JSON written to %s", out)
         return out
 
-    def export_all(self) -> tuple[Path, Path]:
-        """Run both exports. Returns (csv_path, json_path)."""
-        csv_path = self.export_csv()
-        json_path = self.export_summary_json()
-        return csv_path, json_path
+    def export_events_json(self, output_path: str | Path | None = None) -> Path:
+        """Export a per-event JSON list with all required fields.
+
+        Format matches the specification::
+
+            [
+              {
+                "event_id": 1,
+                "timestamp": "2026-03-08T10:12:34",
+                "frame_number": 4523,
+                "latitude": 28.6139,
+                "longitude": 77.2090,
+                "vehicle_speed_kmh": 68,
+                "anomaly_type": "STAGGER_RIGHT",
+                "severity": "WARNING",
+                "value": 155.3,
+                "threshold": 150.0,
+                "message": "...",
+                "video_clip": "events/event_001.mp4",
+                "model_version": "classical-v1"
+              },
+              ...
+            ]
+
+        Returns: path to the written JSON file.
+        """
+        out = (
+            Path(output_path) if output_path
+            else self._db.parent / (self._db.stem + "_events.json")
+        )
+        conn = sqlite3.connect(str(self._db))
+        conn.row_factory = sqlite3.Row
+
+        rows = conn.execute("""
+            SELECT
+                id               AS event_id,
+                timestamp_ms,
+                frame_id         AS frame_number,
+                anomaly_type,
+                severity,
+                value,
+                threshold,
+                message,
+                latitude,
+                longitude,
+                speed_kmh        AS vehicle_speed_kmh,
+                video_clip,
+                model_version
+            FROM anomalies
+            ORDER BY frame_id
+        """).fetchall()
+        conn.close()
+
+        import datetime
+        events: list[dict[str, Any]] = []
+        for i, r in enumerate(rows, start=1):
+            # Convert timestamp_ms → ISO string
+            ts_ms = r["timestamp_ms"]
+            if ts_ms:
+                dt = datetime.datetime.utcfromtimestamp(ts_ms / 1000.0)
+                ts_iso = dt.strftime("%Y-%m-%dT%H:%M:%S")
+            else:
+                ts_iso = ""
+
+            events.append({
+                "event_id":          i,
+                "timestamp":         ts_iso,
+                "frame_number":      r["frame_number"],
+                "latitude":          r["latitude"],
+                "longitude":         r["longitude"],
+                "vehicle_speed_kmh": r["vehicle_speed_kmh"],
+                "anomaly_type":      r["anomaly_type"],
+                "severity":          r["severity"],
+                "value":             r["value"],
+                "threshold":         r["threshold"],
+                "message":           r["message"] or "",
+                "video_clip":        r["video_clip"] or "",
+                "model_version":     r["model_version"] or "",
+            })
+
+        out.write_text(json.dumps(events, indent=2), encoding="utf-8")
+        logger.info("Events JSON written to %s (%d events)", out, len(events))
+        return out
+
+    def export_all(self) -> tuple[Path, Path, Path]:
+        """Run all three exports. Returns (csv_path, summary_json_path, events_json_path)."""
+        csv_path    = self.export_csv()
+        json_path   = self.export_summary_json()
+        events_path = self.export_events_json()
+        return csv_path, json_path, events_path

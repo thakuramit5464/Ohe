@@ -1,22 +1,23 @@
 """
 ui/main_window.py
 ------------------
-OHE GUI – Main Window
+OHE GUI – Main Window  (Phase 6 — enhanced)
 
 Layout
 ------
 ┌─────────────────────────────────────────────────────┐
-│  Toolbar: [Open Video] [Start] [Stop] [Export]      │
+│  Toolbar: [Open Video] [Start] [Stop] [Export] [Share]│
 ├──────────────────────┬──────────────────────────────┤
 │                      │  MetricCards                 │
 │    VideoPanel        │  (Stagger / Diameter / Det%) │
 │                      ├──────────────────────────────┤
 │                      │  PlotPanel                   │
-│                      │  (Stagger + Diameter traces) │
 ├──────────────────────┴──────────────────────────────┤
-│  AnomalyPanel (scrollable log)                      │
+│  QTabWidget                                         │
+│   Tab 1: AnomalyPanel (raw anomaly log)             │
+│   Tab 2: EventListPanel + EventDetailWidget         │
 ├─────────────────────────────────────────────────────┤
-│  StatusBar: Frame · FPS · Session path              │
+│  StatusBar: Frame · FPS · Progress · Anomalies      │
 └─────────────────────────────────────────────────────┘
 """
 
@@ -34,9 +35,11 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QSizePolicy,
     QSplitter,
     QStatusBar,
+    QTabWidget,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -49,8 +52,11 @@ from ohe.processing.calibration import CalibrationModel
 from ohe.ui.anomaly_panel import AnomalyPanel
 from ohe.ui.calibration_wizard import CalibrationWizard
 from ohe.ui.config_dialog import ConfigDialog
+from ohe.ui.event_detail_widget import EventDetailWidget
+from ohe.ui.event_list_panel import EventListPanel
 from ohe.ui.plot_panel import PlotPanel
 from ohe.ui.pipeline_worker import PipelineWorker
+from ohe.ui.share_dialog import ShareDialog
 from ohe.ui.video_panel import VideoPanel
 from ohe.ui.widgets import MetricCard, Palette
 
@@ -62,7 +68,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("OHE — Stagger & Wire Diameter Measurement")
         self.setMinimumSize(1100, 700)
-        self.resize(1280, 800)
+        self.resize(1440, 900)
 
         self._cfg = load_config()
         self._cal = CalibrationModel.from_json(
@@ -71,6 +77,7 @@ class MainWindow(QMainWindow):
         )
         self._worker: PipelineWorker | None = None
         self._video_path: str | None = None
+        self._last_session_id: str = ""
 
         self._build_toolbar()
         self._build_menu()
@@ -94,6 +101,8 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         act_export_m = file_menu.addAction("Export Last Session…")
         act_export_m.triggered.connect(self._on_export)
+        act_share = file_menu.addAction("Share / Export Session…")
+        act_share.triggered.connect(self._on_share)
         file_menu.addSeparator()
         act_quit = file_menu.addAction("Quit")
         act_quit.triggered.connect(self.close)
@@ -116,11 +125,6 @@ class MainWindow(QMainWindow):
         act_about = help_menu.addAction("About")
         act_about.triggered.connect(self._on_about)
 
-
-    # ------------------------------------------------------------------
-    # Build UI
-    # ------------------------------------------------------------------
-
     def _build_toolbar(self) -> None:
         tb = QToolBar("Main")
         tb.setMovable(False)
@@ -133,13 +137,13 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        self._act_start = QAction("Start", self)
+        self._act_start = QAction("▶  Start", self)
         self._act_start.setToolTip("Start processing")
         self._act_start.triggered.connect(self._on_start)
         self._act_start.setEnabled(False)
         tb.addAction(self._act_start)
 
-        self._act_stop = QAction("Stop", self)
+        self._act_stop = QAction("■  Stop", self)
         self._act_stop.setToolTip("Stop processing")
         self._act_stop.triggered.connect(self._on_stop)
         self._act_stop.setEnabled(False)
@@ -153,8 +157,14 @@ class MainWindow(QMainWindow):
         self._act_export.setEnabled(False)
         tb.addAction(self._act_export)
 
+        self._act_share = QAction("Share…", self)
+        self._act_share.setToolTip("Share / export session data (folder, ZIP, email)")
+        self._act_share.triggered.connect(self._on_share)
+        self._act_share.setEnabled(False)
+        tb.addAction(self._act_share)
+
     def _build_central(self) -> None:
-        # Outer vertical splitter: top (video+info) | bottom (anomaly log)
+        # Outer vertical splitter: top (video+info) | bottom (tabs)
         outer_split = QSplitter(Qt.Orientation.Vertical)
         outer_split.setHandleWidth(4)
 
@@ -197,10 +207,52 @@ class MainWindow(QMainWindow):
         top_lay.addWidget(right, stretch=0)
         outer_split.addWidget(top)
 
-        # ---- Bottom: anomaly log ----
+        # ---- Bottom: tabbed panel ----
+        self._tab_widget = QTabWidget()
+        self._tab_widget.setStyleSheet(
+            f"""
+            QTabWidget::pane {{
+                border: 1px solid #2a4a7f;
+                border-radius: 0 0 6px 6px;
+            }}
+            QTabBar::tab {{
+                background-color: {Palette.BG_CARD};
+                color: {Palette.TEXT_DIM};
+                padding: 5px 16px;
+                border: 1px solid #2a4a7f;
+                border-bottom: none;
+                border-radius: 4px 4px 0 0;
+                min-width: 120px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {Palette.BG_PANEL};
+                color: {Palette.TEXT};
+            }}
+            QTabBar::tab:hover {{
+                background-color: #1a3a6a;
+            }}
+            """
+        )
+
+        # Tab 1: Anomaly log
         self._anomaly_panel = AnomalyPanel()
-        self._anomaly_panel.setFixedHeight(180)
-        outer_split.addWidget(self._anomaly_panel)
+        self._tab_widget.addTab(self._anomaly_panel, "Anomaly Log")
+
+        # Tab 2: Events (list + detail side by side)
+        events_widget = QWidget()
+        events_lay = QHBoxLayout(events_widget)
+        events_lay.setContentsMargins(4, 4, 4, 4)
+        events_lay.setSpacing(6)
+
+        self._event_list_panel = EventListPanel()
+        self._event_detail_widget = EventDetailWidget()
+        events_lay.addWidget(self._event_list_panel, stretch=3)
+        events_lay.addWidget(self._event_detail_widget, stretch=0)
+        self._event_list_panel.event_selected.connect(self._event_detail_widget.show_event)
+        self._tab_widget.addTab(events_widget, "Events  🎬")
+
+        self._tab_widget.setFixedHeight(220)
+        outer_split.addWidget(self._tab_widget)
 
         outer_split.setStretchFactor(0, 4)
         outer_split.setStretchFactor(1, 1)
@@ -215,10 +267,33 @@ class MainWindow(QMainWindow):
         self._lbl_frame  = QLabel("Frame: —")
         self._lbl_fps    = QLabel("FPS: —")
         self._lbl_anoms  = QLabel("Anomalies: 0")
+        self._lbl_events = QLabel("Clips: 0")
 
-        for lbl in (self._lbl_file, self._lbl_frame, self._lbl_fps, self._lbl_anoms):
+        for lbl in (self._lbl_file, self._lbl_frame, self._lbl_fps,
+                    self._lbl_anoms, self._lbl_events):
             lbl.setStyleSheet(f"color: {Palette.TEXT_DIM}; padding: 0 10px;")
             sb.addWidget(lbl)
+
+        # Progress bar
+        self._progress = QProgressBar()
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        self._progress.setFixedWidth(180)
+        self._progress.setTextVisible(True)
+        self._progress.setStyleSheet(
+            f"""
+            QProgressBar {{
+                background-color: {Palette.BG_PANEL};
+                border: 1px solid #2a4a7f;
+                border-radius: 4px;
+                text-align: center;
+                color: {Palette.TEXT};
+                font-size: 10px;
+            }}
+            QProgressBar::chunk {{ background-color: #4a8adf; border-radius: 4px; }}
+            """
+        )
+        sb.addPermanentWidget(self._progress)
 
     # ------------------------------------------------------------------
     # Toolbar actions
@@ -236,6 +311,8 @@ class MainWindow(QMainWindow):
         self._video_panel.show_placeholder(f"Ready: {Path(path).name}")
         self._plot_panel.clear()
         self._anomaly_panel.clear()
+        self._event_list_panel.clear()
+        self._progress.setValue(0)
 
     def _on_start(self) -> None:
         if not self._video_path:
@@ -244,13 +321,18 @@ class MainWindow(QMainWindow):
         self._act_start.setEnabled(False)
         self._act_stop.setEnabled(True)
         self._act_export.setEnabled(False)
+        self._act_share.setEnabled(False)
         self._plot_panel.clear()
         self._anomaly_panel.clear()
+        self._event_list_panel.clear()
+        self._progress.setValue(0)
+        self._lbl_events.setText("Clips: 0")
 
         self._worker = PipelineWorker(self._video_path, self._cfg, self._cal, parent=self)
         self._worker.new_frame.connect(self._on_frame)
         self._worker.new_measurement.connect(self._on_measurement)
         self._worker.new_anomaly.connect(self._on_anomaly)
+        self._worker.new_event_clip.connect(self._on_event_clip)
         self._worker.stats_update.connect(self._on_stats)
         self._worker.error.connect(self._on_error)
         self._worker.finished.connect(self._on_finished)
@@ -294,8 +376,9 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self, "About OHE",
             "<b>OHE Stagger &amp; Wire Diameter Measurement</b><br>"
-            "Version 0.1.0 — Phase 5<br><br>"
-            "Classical computer-vision pipeline for overhead equipment inspection.<br>"
+            "Version 0.2.0 — Phase 6<br><br>"
+            "Complete event analysis system: wire detection, geolocation,<br>"
+            "event clips, detailed logs, and data sharing.<br><br>"
             "Built with OpenCV, scipy, PyQt6, pyqtgraph."
         )
 
@@ -311,13 +394,24 @@ class MainWindow(QMainWindow):
         db = sessions[0]
         try:
             exp = SessionExporter(db)
-            csv_path, json_path = exp.export_all()
+            csv_path, json_path, events_path = exp.export_all()
             QMessageBox.information(
                 self, "Export Complete",
-                f"CSV:  {csv_path}\nJSON: {json_path}",
+                f"CSV:    {csv_path}\n"
+                f"JSON:   {json_path}\n"
+                f"Events: {events_path}",
             )
         except Exception as e:
             QMessageBox.critical(self, "Export Failed", str(e))
+
+    def _on_share(self) -> None:
+        dlg = ShareDialog(
+            session_dir=self._cfg.session_dir_path(),
+            events_dir=self._cfg.events_dir_path(),
+            session_id=self._last_session_id,
+            parent=self,
+        )
+        dlg.exec()
 
     # ------------------------------------------------------------------
     # Worker signal handlers (run on UI thread via queued connection)
@@ -328,7 +422,6 @@ class MainWindow(QMainWindow):
         self._lbl_frame.setText(f"Frame: {frame_id}")
 
     def _on_measurement(self, m: Measurement) -> None:
-        # Update metric cards
         severity_colour = Palette.TEXT
         if m.stagger_mm is not None:
             abs_s = abs(m.stagger_mm)
@@ -341,12 +434,23 @@ class MainWindow(QMainWindow):
         if m.diameter_mm is not None:
             d_colour = Palette.CRITICAL if m.diameter_mm < 8 else Palette.OK
             self._card_diameter.set_value(m.diameter_mm, d_colour)
-        # Update plots
         self._plot_panel.add_measurement(m)
 
     def _on_anomaly(self, a: Anomaly) -> None:
         self._anomaly_panel.add_anomaly(a)
         self._lbl_anoms.setText(f"Anomalies: {self._anomaly_panel.count}")
+        # Also add to event list panel
+        self._event_list_panel.add_event(a)
+        # Switch to Events tab to draw attention
+        if self._tab_widget.currentIndex() == 0:
+            self._tab_widget.setTabText(1, f"Events  🎬 ({self._event_list_panel.count})")
+
+    def _on_event_clip(self, clip_path: str, anomaly: object) -> None:
+        """Called when an event clip is written — update the event list."""
+        if isinstance(anomaly, Anomaly):
+            self._event_list_panel.update_clip_path(clip_path, anomaly)
+            clip_count = self._event_list_panel.count
+            self._lbl_events.setText(f"Clips: {clip_count}")
 
     def _on_stats(self, stats: dict) -> None:
         self._lbl_fps.setText(f"FPS: {stats['fps']:.1f}")
@@ -355,6 +459,10 @@ class MainWindow(QMainWindow):
             det_pct,
             Palette.OK if det_pct >= 60 else Palette.WARNING,
         )
+        progress = int(stats.get("progress_pct", 0))
+        self._progress.setValue(progress)
+        frame_ms = stats.get("frame_ms", 0)
+        self._progress.setFormat(f"{progress}%  |  {frame_ms:.1f}ms/frame")
 
     def _on_error(self, msg: str) -> None:
         QMessageBox.critical(self, "Pipeline Error", msg)
@@ -364,7 +472,18 @@ class MainWindow(QMainWindow):
         self._act_start.setEnabled(True)
         self._act_stop.setEnabled(False)
         self._act_export.setEnabled(True)
+        self._act_share.setEnabled(True)
+        self._progress.setValue(100)
+        self._progress.setFormat("Done")
         self._video_panel.show_placeholder("Processing complete — open a new file or export session")
+        # Capture session id for share dialog
+        sessions = sorted(
+            self._cfg.session_dir_path().glob("*.sqlite"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if sessions:
+            self._last_session_id = sessions[0].stem
 
     # ------------------------------------------------------------------
     # Lifecycle

@@ -48,7 +48,7 @@ rules:
 
 logging:
   # Directory for session output (created automatically)
-  session_dir: "data/sessions"
+  session_dir: "data/logs"
   # Enable/disable individual outputs
   sqlite_enabled: true
   csv_enabled: true
@@ -56,6 +56,38 @@ logging:
   csv_max_rows: 100000
   # Log level: DEBUG, INFO, WARNING, ERROR
   log_level: "INFO"
+
+# ---- Event video clip generation ----------------------------------------
+event_video:
+  # Enable / disable event clip creation entirely
+  enabled: true
+  # Frames before the anomaly to include in the clip (ring buffer size)
+  pre_frames: 90
+  # Frames after the anomaly to continue capturing for the clip
+  post_frames: 60
+  # Output directory for .mp4 clips
+  events_dir: "data/events"
+  # Frame-rate for the encoded clip
+  video_fps: 25.0
+
+# ---- Geolocation ---------------------------------------------------------
+geo:
+  # Set to true to attach geo data to events
+  enabled: true
+  # Speed used by the simulated provider (km/h). Replace with real GPS later.
+  simulated_speed_kmh: 60.0
+  # Simulation origin (New Delhi, India)
+  origin_latitude: 28.6139
+  origin_longitude: 77.2090
+
+# ---- Video / training directory ------------------------------------------
+video_directory:
+  training_videos_dir: "data/videos"
+  frames_dir: "data/frames"
+  models_dir: "data/models"
+
+# ---- Algorithm version ---------------------------------------------------
+model_version: "classical-v1"
 
 ui:
   # Window geometry

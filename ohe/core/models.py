@@ -15,6 +15,35 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
+# Geolocation
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GeoLocation:
+    """Geolocation snapshot attached to a frame or event."""
+
+    latitude: float
+    """WGS-84 latitude in decimal degrees."""
+
+    longitude: float
+    """WGS-84 longitude in decimal degrees."""
+
+    speed_kmh: float
+    """Vehicle speed at the time of measurement (km/h)."""
+
+    timestamp_iso: str = ""
+    """ISO-8601 wall-clock timestamp string, e.g. '2026-03-08T10:12:34'."""
+
+    def as_dict(self) -> dict:
+        return {
+            "latitude":  self.latitude,
+            "longitude": self.longitude,
+            "speed_kmh": self.speed_kmh,
+            "timestamp": self.timestamp_iso,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Ingestion layer
 # ---------------------------------------------------------------------------
 
@@ -138,6 +167,19 @@ class Anomaly:
     message: str = ""
     """Human-readable description."""
 
+    # --- Geolocation fields (attached by PipelineWorker if geo is enabled) ---
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    speed_kmh: Optional[float] = None
+
+    # --- Event clip (filled in after the clip is written) ---
+    video_clip: Optional[str] = None
+    """Relative path to the saved MP4 event clip, e.g. 'events/event_001.mp4'."""
+
+    # --- Model traceability ---
+    model_version: str = "classical-v1"
+    """Detection algorithm version that produced this anomaly."""
+
 
 # ---------------------------------------------------------------------------
 # Session metadata
@@ -159,4 +201,6 @@ class SessionInfo:
     ended_at_ms: Optional[float] = None
     total_frames: int = 0
     anomaly_count: int = 0
+    event_clip_count: int = 0
+    """Number of event video clips generated during this session."""
     notes: str = ""

@@ -125,6 +125,41 @@ class UIConfig(BaseModel):
     overlay_centre_colour: list[int] = [0, 0, 255]
 
 
+class EventVideoConfig(BaseModel):
+    """Controls event clip generation."""
+    enabled: bool = True
+    pre_frames: int = Field(90, ge=0)
+    """Number of frames before the anomaly frame to include in the clip."""
+    post_frames: int = Field(60, ge=0)
+    """Number of frames after the anomaly frame to include in the clip."""
+    events_dir: str = "data/events"
+    """Directory where event MP4 clips are stored."""
+    video_fps: float = Field(25.0, gt=0)
+    """Frame-rate used when encoding event clips."""
+
+
+class GeoConfig(BaseModel):
+    """Geolocation settings."""
+    enabled: bool = False
+    """Set to True to attach simulated (or real) geo data to every event."""
+    simulated_speed_kmh: float = Field(60.0, ge=0)
+    """Speed value used by the SimulatedGeoProvider."""
+    origin_latitude: float = 28.6139
+    """Starting latitude for simulation (default: New Delhi, India)."""
+    origin_longitude: float = 77.2090
+    """Starting longitude for simulation."""
+
+
+class VideoDirectoryConfig(BaseModel):
+    """Paths for training video storage and frame extraction."""
+    training_videos_dir: str = "data/videos"
+    """Directory containing training / reference video files."""
+    frames_dir: str = "data/frames"
+    """Directory for extracted debug/training frames."""
+    models_dir: str = "data/models"
+    """Directory for saved model weights / calibration exports."""
+
+
 # ---------------------------------------------------------------------------
 # Root config model
 # ---------------------------------------------------------------------------
@@ -136,6 +171,43 @@ class AppConfig(BaseModel):
     rules: RulesConfig = RulesConfig()
     logging: LoggingConfig = LoggingConfig()
     ui: UIConfig = UIConfig()
+    event_video: EventVideoConfig = EventVideoConfig()
+    geo: GeoConfig = GeoConfig()
+    video_directory: VideoDirectoryConfig = VideoDirectoryConfig()
+    model_version: str = "classical-v1"
+    """Detection algorithm / model version string stored in every anomaly log."""
+
+    def events_dir_path(self) -> Path:
+        """Resolve event clips directory.
+
+        - Frozen exe: %APPDATA%\\OHE\\events
+        - Dev run  : relative to project root.
+        """
+        import sys
+        p = Path(self.event_video.events_dir)
+        if p.is_absolute():
+            return p
+        if getattr(sys, "frozen", False):
+            events = Path.home() / "AppData" / "Roaming" / "OHE" / "events"
+            events.mkdir(parents=True, exist_ok=True)
+            return events
+        return _PROJECT_ROOT / p
+
+    def ensure_data_dirs(self) -> None:
+        """Create all required data directories if they don't exist."""
+        dirs = [
+            self.session_dir_path(),
+            self.events_dir_path(),
+            _PROJECT_ROOT / self.logging.session_dir,
+            _PROJECT_ROOT / self.video_directory.training_videos_dir,
+            _PROJECT_ROOT / self.video_directory.frames_dir,
+            _PROJECT_ROOT / self.video_directory.models_dir,
+        ]
+        for d in dirs:
+            try:
+                Path(d).mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass  # best-effort; frozen paths may differ
 
     def calibration_path(self) -> Path:
         """Resolve calibration file path.

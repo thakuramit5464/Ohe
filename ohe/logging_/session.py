@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     ended_at_ms  REAL,
     total_frames INTEGER DEFAULT 0,
     anomaly_count INTEGER DEFAULT 0,
+    event_clip_count INTEGER DEFAULT 0,
     notes        TEXT DEFAULT ''
 );
 
@@ -50,15 +51,20 @@ CREATE TABLE IF NOT EXISTS measurements (
 );
 
 CREATE TABLE IF NOT EXISTS anomalies (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id   TEXT,
-    frame_id     INTEGER,
-    timestamp_ms REAL,
-    anomaly_type TEXT,
-    value        REAL,
-    threshold    REAL,
-    severity     TEXT,
-    message      TEXT,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id     TEXT,
+    frame_id       INTEGER,
+    timestamp_ms   REAL,
+    anomaly_type   TEXT,
+    value          REAL,
+    threshold      REAL,
+    severity       TEXT,
+    message        TEXT,
+    latitude       REAL,
+    longitude      REAL,
+    speed_kmh      REAL,
+    video_clip     TEXT,
+    model_version  TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 );
 """
@@ -113,8 +119,9 @@ class SessionLogger:
             raise RuntimeError("Session not started.")
         ended_at = time.time() * 1000
         self._conn.execute(
-            "UPDATE sessions SET ended_at_ms=?, total_frames=?, anomaly_count=? WHERE session_id=?",
-            (ended_at, self._info.total_frames, self._info.anomaly_count, self._session_id),
+            "UPDATE sessions SET ended_at_ms=?, total_frames=?, anomaly_count=?, event_clip_count=? WHERE session_id=?",
+            (ended_at, self._info.total_frames, self._info.anomaly_count,
+             self._info.event_clip_count, self._session_id),
         )
         self._conn.commit()
         self._conn.close()
@@ -140,16 +147,40 @@ class SessionLogger:
         if self._info:
             self._info.total_frames += 1
 
-    def log_anomaly(self, a: Anomaly) -> None:
+    def log_anomaly(self, a: "Anomaly") -> int:
+        """Write an anomaly to SQLite.  Returns the SQLite rowid of the new row."""
         if self._conn is None:
-            return
-        self._conn.execute(
-            "INSERT INTO anomalies (session_id,frame_id,timestamp_ms,anomaly_type,value,threshold,severity,message) VALUES (?,?,?,?,?,?,?,?)",
-            (self._session_id, a.frame_id, a.timestamp_ms, a.anomaly_type, a.value, a.threshold, a.severity, a.message),
+            return -1
+        cur = self._conn.execute(
+            """
+            INSERT INTO anomalies
+                (session_id, frame_id, timestamp_ms, anomaly_type, value, threshold,
+                 severity, message, latitude, longitude, speed_kmh, video_clip, model_version)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                self._session_id, a.frame_id, a.timestamp_ms, a.anomaly_type,
+                a.value, a.threshold, a.severity, a.message,
+                a.latitude, a.longitude, a.speed_kmh,
+                a.video_clip, a.model_version,
+            ),
         )
         self._conn.commit()
         if self._info:
             self._info.anomaly_count += 1
+        return cur.lastrowid or -1
+
+    def update_anomaly_clip(self, anomaly_rowid: int, clip_path: str) -> None:
+        """Backfill the video_clip path once the clip file has been written."""
+        if self._conn is None or anomaly_rowid < 0:
+            return
+        self._conn.execute(
+            "UPDATE anomalies SET video_clip=? WHERE id=?",
+            (clip_path, anomaly_rowid),
+        )
+        self._conn.commit()
+        if self._info:
+            self._info.event_clip_count += 1
 
     @property
     def db_path(self) -> Optional[Path]:
