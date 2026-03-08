@@ -5,8 +5,10 @@ ShareDialog — export / share session data from the GUI.
 
 Three modes:
   1. Save to folder — copies CSVs, JSONs, and event clips to a chosen directory.
-  2. Export ZIP     — zips all session artefacts into a single archive.
-  3. Email          — opens system email client via mailto: URI with pre-filled subject.
+  2. Export ZIP     — zips all session artefacts into one archive.
+  3. Email          — opens the system email client via mailto: URI.
+
+Default export location: ~/Documents  (Windows: C:\\Users\\<name>\\Documents)
 """
 
 from __future__ import annotations
@@ -32,11 +34,14 @@ from PyQt6.QtWidgets import (
     QRadioButton,
     QVBoxLayout,
     QWidget,
+    QFrame,
 )
 
 from ohe.ui.widgets import Palette
 
 logger = logging.getLogger(__name__)
+
+_DOCS_DIR = Path.home() / "Documents"
 
 
 class ShareDialog(QDialog):
@@ -63,97 +68,182 @@ class ShareDialog(QDialog):
         self._session_id  = session_id
 
         self.setWindowTitle("Share / Export Session Data")
-        self.setMinimumWidth(480)
-        self.setStyleSheet(f"background-color: {Palette.BG}; color: {Palette.TEXT};")
+        self.setMinimumWidth(520)
+        self.setMinimumHeight(440)
+        self.setStyleSheet(
+            f"background-color: {Palette.BG_DARK}; color: {Palette.TEXT};"
+        )
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        # Title
+        # ── Header ──────────────────────────────────────────────────────────
+        header_row = QHBoxLayout()
+        icon_lbl = QLabel("📤")
+        icon_lbl.setFont(QFont("Segoe UI", 18))
+        icon_lbl.setStyleSheet("background: transparent;")
+        header_row.addWidget(icon_lbl)
+
+        title_col = QVBoxLayout()
         title = QLabel("Export Session Data")
-        title.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        title.setStyleSheet(f"color: {Palette.TEXT};")
-        layout.addWidget(title)
-
-        sub = QLabel("Choose how to share the events, logs, and video clips.")
-        sub.setStyleSheet(f"color: {Palette.TEXT_DIM}; font-size: 11px;")
-        layout.addWidget(sub)
-
-        # Export mode selection
-        mode_box = QGroupBox("Export Mode")
-        mode_box.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid #2a4a7f; border-radius: 5px; color: {Palette.TEXT_DIM}; "
-            f"margin-top: 8px; }} QGroupBox::title {{ subcontrol-origin: margin; left: 8px; }}"
+        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        title.setStyleSheet(f"color: {Palette.TEXT}; background: transparent;")
+        sub = QLabel("Choose how to share events, logs, and video clips.")
+        sub.setStyleSheet(
+            f"color: {Palette.TEXT_DIM}; font-size: 11px; background: transparent;"
         )
-        mode_lay = QVBoxLayout(mode_box)
+        title_col.addWidget(title)
+        title_col.addWidget(sub)
 
-        self._rb_folder = QRadioButton("Save to folder")
-        self._rb_zip    = QRadioButton("Export as ZIP archive")
-        self._rb_email  = QRadioButton("Send via Email (mailto)")
+        header_row.addLayout(title_col)
+        header_row.addStretch()
+        layout.addLayout(header_row)
+
+        # Divider
+        div = QFrame()
+        div.setFrameShape(QFrame.Shape.HLine)
+        div.setStyleSheet(f"color: {Palette.BORDER};")
+        layout.addWidget(div)
+
+        # ── Export Mode ──────────────────────────────────────────────────────
+        mode_box = self._make_group("Export Mode")
+        mode_lay = QVBoxLayout(mode_box)
+        mode_lay.setSpacing(8)
+
+        self._rb_folder = QRadioButton("📁  Save to folder")
+        self._rb_zip    = QRadioButton("🗜  Export as ZIP archive")
+        self._rb_email  = QRadioButton("✉  Send via Email (mailto)")
         self._rb_folder.setChecked(True)
+
         for rb in (self._rb_folder, self._rb_zip, self._rb_email):
-            rb.setStyleSheet(f"color: {Palette.TEXT};")
+            rb.setStyleSheet(f"color: {Palette.TEXT}; font-size: 12px;")
             mode_lay.addWidget(rb)
+
+        # Live path preview label
+        self._path_preview = QLabel()
+        self._path_preview.setWordWrap(True)
+        self._path_preview.setStyleSheet(
+            f"color: {Palette.ACCENT2}; font-size: 10px; "
+            f"padding: 6px 8px; border-radius: 4px; "
+            f"background-color: {Palette.BG_PANEL};"
+        )
+        mode_lay.addWidget(self._path_preview)
         layout.addWidget(mode_box)
 
-        # Content checkboxes
-        content_box = QGroupBox("Include")
-        content_box.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid #2a4a7f; border-radius: 5px; color: {Palette.TEXT_DIM}; "
-            f"margin-top: 8px; }} QGroupBox::title {{ subcontrol-origin: margin; left: 8px; }}"
-        )
+        # Connect radio buttons to update the preview
+        self._rb_folder.toggled.connect(self._update_path_preview)
+        self._rb_zip.toggled.connect(self._update_path_preview)
+        self._rb_email.toggled.connect(self._update_path_preview)
+        self._update_path_preview()   # populate on open
+
+        # ── Content ──────────────────────────────────────────────────────────
+        content_box = self._make_group("Include")
         content_lay = QVBoxLayout(content_box)
-        self._chk_logs   = QCheckBox("Event logs (CSV, JSON)")
-        self._chk_clips  = QCheckBox("Event video clips (MP4)")
-        self._chk_db     = QCheckBox("Session database (SQLite)")
+        content_lay.setSpacing(6)
+
+        self._chk_logs  = QCheckBox("Event logs (CSV + JSON)")
+        self._chk_clips = QCheckBox("Event video clips (MP4)")
+        self._chk_db    = QCheckBox("Session database (SQLite)")
         for chk in (self._chk_logs, self._chk_clips, self._chk_db):
             chk.setChecked(True)
-            chk.setStyleSheet(f"color: {Palette.TEXT};")
+            chk.setStyleSheet(f"color: {Palette.TEXT}; font-size: 12px;")
             content_lay.addWidget(chk)
         layout.addWidget(content_box)
 
-        # Progress bar
+        # ── Progress bar ─────────────────────────────────────────────────────
         self._progress = QProgressBar()
         self._progress.setVisible(False)
+        self._progress.setFixedHeight(8)
+        self._progress.setTextVisible(False)
         self._progress.setStyleSheet(
             f"""
             QProgressBar {{
                 background-color: {Palette.BG_PANEL};
-                border: 1px solid #2a4a7f;
+                border: none;
                 border-radius: 4px;
-                text-align: center;
-                color: {Palette.TEXT};
             }}
-            QProgressBar::chunk {{ background-color: #4a8adf; border-radius: 4px; }}
+            QProgressBar::chunk {{
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 {Palette.ACCENT2}, stop:1 #7b2fff);
+                border-radius: 4px;
+            }}
             """
         )
         layout.addWidget(self._progress)
 
-        # Buttons
+        layout.addStretch()
+
+        # ── Buttons ──────────────────────────────────────────────────────────
+        btn_div = QFrame()
+        btn_div.setFrameShape(QFrame.Shape.HLine)
+        btn_div.setStyleSheet(f"color: {Palette.BORDER};")
+        layout.addWidget(btn_div)
+
         btn_row = QHBoxLayout()
         self._btn_export = QPushButton("Export")
         self._btn_cancel = QPushButton("Cancel")
-        for btn in (self._btn_export, self._btn_cancel):
-            btn.setFont(QFont("Segoe UI", 10))
-            btn.setStyleSheet(
-                f"""
-                QPushButton {{
-                    background-color: {Palette.BG_CARD};
-                    color: {Palette.TEXT};
-                    border: 1px solid #2a4a7f;
-                    border-radius: 5px;
-                    padding: 6px 20px;
-                }}
-                QPushButton:hover {{ background-color: #2a4a7f; }}
-                """
-            )
+
+        self._btn_export.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        self._btn_cancel.setFont(QFont("Segoe UI", 10))
+
+        self._btn_export.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {Palette.ACCENT2};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 28px;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{ background-color: #6aaaf7; }}
+            QPushButton:pressed {{ background-color: #2a5aaf; }}
+            """
+        )
+        self._btn_cancel.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {Palette.BG_CARD};
+                color: {Palette.TEXT};
+                border: 1px solid {Palette.BORDER};
+                border-radius: 6px;
+                padding: 8px 22px;
+            }}
+            QPushButton:hover {{ background-color: #1a4a80; border-color: {Palette.ACCENT2}; }}
+            """
+        )
         self._btn_export.clicked.connect(self._on_export)
         self._btn_cancel.clicked.connect(self.reject)
         btn_row.addStretch()
-        btn_row.addWidget(self._btn_export)
         btn_row.addWidget(self._btn_cancel)
+        btn_row.addWidget(self._btn_export)
         layout.addLayout(btn_row)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _make_group(title: str) -> QGroupBox:
+        box = QGroupBox(title)
+        box.setStyleSheet(
+            f"QGroupBox {{ border: 1px solid {Palette.BORDER}; border-radius: 8px; "
+            f"color: {Palette.TEXT_DIM}; margin-top: 10px; font-weight: 600; font-size: 11px; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 6px; }}"
+        )
+        return box
+
+    def _update_path_preview(self) -> None:
+        """Refresh the path hint label whenever the export mode changes."""
+        sid = self._session_id or "session"
+        if self._rb_folder.isChecked():
+            text = f"📍  Default destination: {_DOCS_DIR}"
+        elif self._rb_zip.isChecked():
+            text = f"📍  Default save location: {_DOCS_DIR / f'{sid}_export.zip'}"
+        else:
+            text = "📧  Opens your default email client with a pre-filled message."
+        self._path_preview.setText(text)
 
     # ------------------------------------------------------------------
     # Export logic
@@ -180,7 +270,7 @@ class ShareDialog(QDialog):
         return files
 
     def _export_to_folder(self) -> None:
-        default_docs = str(Path.home() / "Documents")
+        default_docs = str(_DOCS_DIR)
         dest = QFileDialog.getExistingDirectory(
             self, "Choose destination folder", default_docs
         )
@@ -204,13 +294,13 @@ class ShareDialog(QDialog):
         self._progress.setVisible(False)
         QMessageBox.information(
             self, "Export Complete",
-            f"Copied {copied} file(s) to:\n{dest_path}",
+            f"✅  Copied {copied} file(s) to:\n{dest_path}",
         )
         self.accept()
 
     def _export_zip(self) -> None:
         sid = self._session_id or "session"
-        default_name = str(Path.home() / "Documents" / f"{sid}_export.zip")
+        default_name = str(_DOCS_DIR / f"{sid}_export.zip")
         zip_path, _ = QFileDialog.getSaveFileName(
             self, "Save ZIP archive", default_name, "ZIP Archives (*.zip)"
         )
@@ -234,7 +324,7 @@ class ShareDialog(QDialog):
         self._progress.setVisible(False)
         QMessageBox.information(
             self, "ZIP Created",
-            f"Archive saved to:\n{zip_path}\n\n{len(files)} file(s) included.",
+            f"✅  Archive saved to:\n{zip_path}\n\n{len(files)} file(s) included.",
         )
         self.accept()
 
