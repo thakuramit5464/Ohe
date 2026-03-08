@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     total_frames INTEGER DEFAULT 0,
     anomaly_count INTEGER DEFAULT 0,
     event_clip_count INTEGER DEFAULT 0,
+    track_name   TEXT DEFAULT '',
     notes        TEXT DEFAULT ''
 );
 
@@ -73,10 +74,17 @@ CREATE TABLE IF NOT EXISTS anomalies (
 class SessionLogger:
     """Manages a single measurement session: SQLite writer + session metadata."""
 
-    def __init__(self, session_dir: Path, source: str, notes: str = "") -> None:
+    def __init__(
+        self,
+        session_dir: Path,
+        source: str,
+        notes: str = "",
+        track_name: str = "",
+    ) -> None:
         self._session_dir = session_dir
         self._source = source
         self._notes = notes
+        self._track_name = track_name
         self._session_id: str = ""
         self._db_path: Optional[Path] = None
         self._conn: Optional[sqlite3.Connection] = None
@@ -99,8 +107,8 @@ class SessionLogger:
 
         started_at = time.time() * 1000
         self._conn.execute(
-            "INSERT INTO sessions (session_id, source, started_at_ms, notes) VALUES (?,?,?,?)",
-            (self._session_id, self._source, started_at, self._notes),
+            "INSERT INTO sessions (session_id, source, started_at_ms, track_name, notes) VALUES (?,?,?,?,?)",
+            (self._session_id, self._source, started_at, self._track_name, self._notes),
         )
         self._conn.commit()
 
@@ -108,6 +116,7 @@ class SessionLogger:
             session_id=self._session_id,
             source=self._source,
             started_at_ms=started_at,
+            track_name=self._track_name,
             notes=self._notes,
         )
         logger.info("Session started: %s → %s", self._session_id, self._db_path)

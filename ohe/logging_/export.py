@@ -197,21 +197,23 @@ class SessionExporter:
 
         rows = conn.execute("""
             SELECT
-                id               AS event_id,
-                timestamp_ms,
-                frame_id         AS frame_number,
-                anomaly_type,
-                severity,
-                value,
-                threshold,
-                message,
-                latitude,
-                longitude,
-                speed_kmh        AS vehicle_speed_kmh,
-                video_clip,
-                model_version
-            FROM anomalies
-            ORDER BY frame_id
+                a.id               AS event_id,
+                a.timestamp_ms,
+                a.frame_id         AS frame_number,
+                a.anomaly_type,
+                a.severity,
+                a.value,
+                a.threshold,
+                a.message,
+                a.latitude,
+                a.longitude,
+                a.speed_kmh        AS vehicle_speed_kmh,
+                a.video_clip,
+                a.model_version,
+                s.track_name
+            FROM anomalies a
+            LEFT JOIN sessions s ON a.session_id = s.session_id
+            ORDER BY a.frame_id
         """).fetchall()
         conn.close()
 
@@ -227,6 +229,7 @@ class SessionExporter:
                 ts_iso = ""
 
             events.append({
+                "track_name":        r["track_name"] or "",
                 "event_id":          i,
                 "timestamp":         ts_iso,
                 "frame_number":      r["frame_number"],

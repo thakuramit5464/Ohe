@@ -203,4 +203,6 @@ class SessionInfo:
     anomaly_count: int = 0
     event_clip_count: int = 0
     """Number of event video clips generated during this session."""
+    track_name: str = ""
+    """Track / test run identifier supplied by the user."""
     notes: str = ""

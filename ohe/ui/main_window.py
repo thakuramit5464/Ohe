@@ -29,6 +29,7 @@ import numpy as np
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -56,6 +57,7 @@ from ohe.ui.event_detail_widget import EventDetailWidget
 from ohe.ui.event_list_panel import EventListPanel
 from ohe.ui.plot_panel import PlotPanel
 from ohe.ui.pipeline_worker import PipelineWorker
+from ohe.ui.session_setup_dialog import SessionSetup, SessionSetupDialog
 from ohe.ui.share_dialog import ShareDialog
 from ohe.ui.video_panel import VideoPanel
 from ohe.ui.widgets import MetricCard, Palette
@@ -76,8 +78,8 @@ class MainWindow(QMainWindow):
             fallback_px_per_mm=self._cfg.calibration.fallback_px_per_mm,
         )
         self._worker: PipelineWorker | None = None
-        self._video_path: str | None = None
         self._last_session_id: str = ""
+        self._current_track: str = ""
 
         self._build_toolbar()
         self._build_menu()
@@ -130,17 +132,9 @@ class MainWindow(QMainWindow):
         tb.setMovable(False)
         self.addToolBar(tb)
 
-        self._act_open = QAction("Open Video", self)
-        self._act_open.setToolTip("Select a video file to process")
-        self._act_open.triggered.connect(self._on_open)
-        tb.addAction(self._act_open)
-
-        tb.addSeparator()
-
         self._act_start = QAction("▶  Start", self)
-        self._act_start.setToolTip("Start processing")
+        self._act_start.setToolTip("Configure and start a new processing session")
         self._act_start.triggered.connect(self._on_start)
-        self._act_start.setEnabled(False)
         tb.addAction(self._act_start)
 
         self._act_stop = QAction("■  Stop", self)
@@ -158,7 +152,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self._act_export)
 
         self._act_share = QAction("Share…", self)
-        self._act_share.setToolTip("Share / export session data (folder, ZIP, email)")
+        self._act_share.setToolTip("Share / export session data")
         self._act_share.triggered.connect(self._on_share)
         self._act_share.setEnabled(False)
         tb.addAction(self._act_share)
@@ -263,18 +257,17 @@ class MainWindow(QMainWindow):
         sb = QStatusBar()
         self.setStatusBar(sb)
 
-        self._lbl_file   = QLabel("No file")
+        self._lbl_track  = QLabel("Track: —")
         self._lbl_frame  = QLabel("Frame: —")
         self._lbl_fps    = QLabel("FPS: —")
         self._lbl_anoms  = QLabel("Anomalies: 0")
         self._lbl_events = QLabel("Clips: 0")
 
-        for lbl in (self._lbl_file, self._lbl_frame, self._lbl_fps,
+        for lbl in (self._lbl_track, self._lbl_frame, self._lbl_fps,
                     self._lbl_anoms, self._lbl_events):
             lbl.setStyleSheet(f"color: {Palette.TEXT_DIM}; padding: 0 10px;")
             sb.addWidget(lbl)
 
-        # Progress bar
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
@@ -300,23 +293,29 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_open(self) -> None:
+        """Open a video file without starting — pre-selects for the dialog."""
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Video", "", "Video Files (*.mp4 *.avi *.mkv *.mov);;All Files (*)"
         )
-        if not path:
-            return
-        self._video_path = path
-        self._lbl_file.setText(Path(path).name)
-        self._act_start.setEnabled(True)
-        self._video_panel.show_placeholder(f"Ready: {Path(path).name}")
-        self._plot_panel.clear()
-        self._anomaly_panel.clear()
-        self._event_list_panel.clear()
-        self._progress.setValue(0)
+        if path:
+            self._pending_video_path = path
+            self.setWindowTitle(f"OHE — {Path(path).name}")
 
     def _on_start(self) -> None:
-        if not self._video_path:
+        """Open the session setup dialog then launch the pipeline."""
+        dlg = SessionSetupDialog(
+            parent=self,
+            initial_video_path=getattr(self, "_pending_video_path", ""),
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        setup = dlg.session_setup
+        if setup is None:
+            return
+
+        self._current_track = setup.track_name
+        self._lbl_track.setText(f"Track: {setup.track_name}")
+        self.setWindowTitle(f"OHE — {setup.track_name}")
 
         self._act_start.setEnabled(False)
         self._act_stop.setEnabled(True)
@@ -327,8 +326,9 @@ class MainWindow(QMainWindow):
         self._event_list_panel.clear()
         self._progress.setValue(0)
         self._lbl_events.setText("Clips: 0")
+        self._lbl_anoms.setText("Anomalies: 0")
 
-        self._worker = PipelineWorker(self._video_path, self._cfg, self._cal, parent=self)
+        self._worker = PipelineWorker(setup, self._cfg, self._cal, parent=self)
         self._worker.new_frame.connect(self._on_frame)
         self._worker.new_measurement.connect(self._on_measurement)
         self._worker.new_anomaly.connect(self._on_anomaly)
@@ -475,13 +475,11 @@ class MainWindow(QMainWindow):
         self._act_share.setEnabled(True)
         self._progress.setValue(100)
         self._progress.setFormat("Done")
-        self._video_panel.show_placeholder("Processing complete — open a new file or export session")
-        # Capture session id for share dialog
-        sessions = sorted(
-            self._cfg.session_dir_path().glob("*.sqlite"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
+        self._video_panel.show_placeholder("Processing complete — click Start for a new session or export data")
+        # Capture latest session id for share dialog
+        track_root = self._cfg.track_dir_path(self._current_track) if self._current_track else None
+        logs_dir   = (track_root / "logs") if track_root else self._cfg.session_dir_path()
+        sessions   = sorted(logs_dir.glob("*.sqlite"), key=lambda p: p.stat().st_mtime, reverse=True)
         if sessions:
             self._last_session_id = sessions[0].stem
 

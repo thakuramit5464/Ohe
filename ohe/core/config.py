@@ -125,6 +125,26 @@ class UIConfig(BaseModel):
     overlay_centre_colour: list[int] = [0, 0, 255]
 
 
+class InputConfig(BaseModel):
+    """Input source configuration."""
+    mode: str = "video_file"
+    """'video_file' or 'camera'."""
+    camera_index: int = 0
+    """OpenCV camera index for live camera mode."""
+    camera_fps: float = Field(25.0, gt=0)
+    """Target FPS for camera capture (0 = native camera rate)."""
+
+
+class SpeedConfig(BaseModel):
+    """Vehicle speed source configuration."""
+    mode: str = "simulated"
+    """'simulated' or 'live'."""
+    simulated_base_kmh: float = Field(60.0, ge=0)
+    """Base speed for the SimulatedSpeedProvider."""
+    simulated_jitter_kmh: float = Field(5.0, ge=0)
+    """Maximum random jitter per frame (km/h)."""
+
+
 class EventVideoConfig(BaseModel):
     """Controls event clip generation."""
     enabled: bool = True
@@ -133,17 +153,18 @@ class EventVideoConfig(BaseModel):
     post_frames: int = Field(60, ge=0)
     """Number of frames after the anomaly frame to include in the clip."""
     events_dir: str = "data/events"
-    """Directory where event MP4 clips are stored."""
+    """Directory where event MP4 clips are stored (used as fallback when no track name)."""
     video_fps: float = Field(25.0, gt=0)
     """Frame-rate used when encoding event clips."""
 
 
 class GeoConfig(BaseModel):
     """Geolocation settings."""
-    enabled: bool = False
-    """Set to True to attach simulated (or real) geo data to every event."""
+    enabled: bool = True
+    mode: str = "simulated"
+    """'simulated' or 'live'."""
     simulated_speed_kmh: float = Field(60.0, ge=0)
-    """Speed value used by the SimulatedGeoProvider."""
+    """Speed value used by the SimulatedGeoProvider (legacy — prefer speed.simulated_base_kmh)."""
     origin_latitude: float = 28.6139
     """Starting latitude for simulation (default: New Delhi, India)."""
     origin_longitude: float = 77.2090
@@ -158,6 +179,8 @@ class VideoDirectoryConfig(BaseModel):
     """Directory for extracted debug/training frames."""
     models_dir: str = "data/models"
     """Directory for saved model weights / calibration exports."""
+    tracks_dir: str = "data/tracks"
+    """Root directory for track-scoped test run data."""
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +194,8 @@ class AppConfig(BaseModel):
     rules: RulesConfig = RulesConfig()
     logging: LoggingConfig = LoggingConfig()
     ui: UIConfig = UIConfig()
+    input: InputConfig = InputConfig()
+    speed: SpeedConfig = SpeedConfig()
     event_video: EventVideoConfig = EventVideoConfig()
     geo: GeoConfig = GeoConfig()
     video_directory: VideoDirectoryConfig = VideoDirectoryConfig()
@@ -178,11 +203,7 @@ class AppConfig(BaseModel):
     """Detection algorithm / model version string stored in every anomaly log."""
 
     def events_dir_path(self) -> Path:
-        """Resolve event clips directory.
-
-        - Frozen exe: %APPDATA%\\OHE\\events
-        - Dev run  : relative to project root.
-        """
+        """Resolve event clips directory (fallback when no track name)."""
         import sys
         p = Path(self.event_video.events_dir)
         if p.is_absolute():
@@ -193,21 +214,48 @@ class AppConfig(BaseModel):
             return events
         return _PROJECT_ROOT / p
 
+    def track_dir_path(self, track_name: str) -> Path:
+        """Return the root directory for a named track / test run.
+
+        Structure::
+
+            data/tracks/<track_name>/
+                events/
+                logs/
+                reports/
+                videos/
+        """
+        import sys
+        base = Path(self.video_directory.tracks_dir)
+        if not base.is_absolute():
+            if getattr(sys, "frozen", False):
+                base = Path.home() / "AppData" / "Roaming" / "OHE" / "tracks"
+            else:
+                base = _PROJECT_ROOT / base
+        return base / track_name
+
+    def ensure_track_dirs(self, track_name: str) -> Path:
+        """Create all sub-directories for a track and return the track root."""
+        track_root = self.track_dir_path(track_name)
+        for sub in ("events", "logs", "reports", "videos"):
+            (track_root / sub).mkdir(parents=True, exist_ok=True)
+        return track_root
+
     def ensure_data_dirs(self) -> None:
-        """Create all required data directories if they don't exist."""
+        """Create all base data directories if they don't exist."""
         dirs = [
             self.session_dir_path(),
             self.events_dir_path(),
-            _PROJECT_ROOT / self.logging.session_dir,
             _PROJECT_ROOT / self.video_directory.training_videos_dir,
             _PROJECT_ROOT / self.video_directory.frames_dir,
             _PROJECT_ROOT / self.video_directory.models_dir,
+            _PROJECT_ROOT / self.video_directory.tracks_dir,
         ]
         for d in dirs:
             try:
                 Path(d).mkdir(parents=True, exist_ok=True)
             except Exception:
-                pass  # best-effort; frozen paths may differ
+                pass
 
     def calibration_path(self) -> Path:
         """Resolve calibration file path.

@@ -2,99 +2,92 @@
 # All values can be overridden via environment variables or a local config.yaml
 
 ingestion:
-  # Target playback FPS for processing (0 = native video FPS)
   target_fps: 0
-  # Frame skip: process every Nth frame (1 = every frame)
   frame_skip: 1
 
+# ---- Input source -----------------------------------------------------------
+input:
+  # 'video_file' or 'camera'
+  mode: "video_file"
+  # OpenCV camera index for live camera mode
+  camera_index: 0
+  # Target FPS for camera capture
+  camera_fps: 25.0
+
 processing:
-  # Region of Interest [x, y, width, height] — targets contact wire zone.
-  # For 640x360 OHE video: exclude text overlay (top ~70px) and pantograph/track below y=230.
   roi: [0, 70, 640, 160]
-  # CLAHE clip limit for contrast enhancement
   clahe_clip_limit: 2.0
   clahe_tile_grid_size: [8, 8]
-  # Gaussian blur kernel size (must be odd)
   blur_kernel_size: 5
-  # Canny edge thresholds
   canny_threshold1: 30
   canny_threshold2: 100
-  # Hough line detection parameters
   hough_rho: 1
   hough_theta_deg: 1.0
   hough_threshold: 40
   hough_min_line_length: 30
   hough_max_line_gap: 20
-  # Min confidence to accept a wire detection (0.0 – 1.0); ROI-relative
   min_detection_confidence: 0.2
 
 calibration:
-  # Path to calibration JSON file (relative to project root)
   file: "config/calibration.json"
-  # Fallback scale if calibration file is missing (pixels per mm)
   fallback_px_per_mm: 10.0
 
 rules:
   stagger:
-    # Maximum allowed stagger in either direction (mm)
     warning_mm: 150.0
     critical_mm: 200.0
   diameter:
-    # Wire diameter acceptable range (mm)
     min_warning_mm: 10.0
     min_critical_mm: 8.0
     max_warning_mm: 15.0
     max_critical_mm: 17.0
 
 logging:
-  # Directory for session output (created automatically)
   session_dir: "data/logs"
-  # Enable/disable individual outputs
   sqlite_enabled: true
   csv_enabled: true
-  # Max rows before CSV rolls over to a new file
   csv_max_rows: 100000
-  # Log level: DEBUG, INFO, WARNING, ERROR
   log_level: "INFO"
 
-# ---- Event video clip generation ----------------------------------------
+# ---- Event video clip generation -------------------------------------------
 event_video:
-  # Enable / disable event clip creation entirely
   enabled: true
-  # Frames before the anomaly to include in the clip (ring buffer size)
   pre_frames: 90
-  # Frames after the anomaly to continue capturing for the clip
   post_frames: 60
-  # Output directory for .mp4 clips
   events_dir: "data/events"
-  # Frame-rate for the encoded clip
   video_fps: 25.0
 
-# ---- Geolocation ---------------------------------------------------------
+# ---- Geolocation ------------------------------------------------------------
 geo:
-  # Set to true to attach geo data to events
   enabled: true
-  # Speed used by the simulated provider (km/h). Replace with real GPS later.
+  # 'simulated' or 'live'
+  mode: "simulated"
   simulated_speed_kmh: 60.0
-  # Simulation origin (New Delhi, India)
   origin_latitude: 28.6139
   origin_longitude: 77.2090
 
-# ---- Video / training directory ------------------------------------------
+# ---- Vehicle speed ----------------------------------------------------------
+speed:
+  # 'simulated' or 'live'
+  mode: "simulated"
+  simulated_base_kmh: 60.0
+  # Max random jitter per frame (km/h) for realistic variation
+  simulated_jitter_kmh: 5.0
+
+# ---- Video / training directory ---------------------------------------------
 video_directory:
   training_videos_dir: "data/videos"
   frames_dir: "data/frames"
   models_dir: "data/models"
+  # Root directory for track-scoped test run data
+  tracks_dir: "data/tracks"
 
-# ---- Algorithm version ---------------------------------------------------
+# ---- Algorithm version ------------------------------------------------------
 model_version: "classical-v1"
 
 ui:
-  # Window geometry
   window_width: 1440
   window_height: 900
-  # Chart history: number of data points to display on live charts
   chart_history_frames: 500
-  # Overlay colour for wire bounding box (BGR)
   overlay_wire_colour: [0, 255, 0]
   overlay_centre_colour: [0, 0, 255]
