@@ -60,7 +60,7 @@ from ohe.ui.pipeline_worker import PipelineWorker
 from ohe.ui.session_setup_dialog import SessionSetup, SessionSetupDialog
 from ohe.ui.share_dialog import ShareDialog
 from ohe.ui.video_panel import VideoPanel
-from ohe.ui.widgets import MetricCard, Palette
+from ohe.ui.widgets import MetricCard, Palette, SessionInfoBar
 
 
 class MainWindow(QMainWindow):
@@ -162,7 +162,16 @@ class MainWindow(QMainWindow):
         outer_split = QSplitter(Qt.Orientation.Vertical)
         outer_split.setHandleWidth(4)
 
-        # ---- Top section ----
+        # ---- Top: SessionInfoBar + video + right panel ----------------
+        top_container = QWidget()
+        top_v = QVBoxLayout(top_container)
+        top_v.setContentsMargins(0, 0, 0, 0)
+        top_v.setSpacing(0)
+
+        # Session info bar
+        self._session_info_bar = SessionInfoBar()
+        top_v.addWidget(self._session_info_bar)
+
         top = QWidget()
         top_lay = QHBoxLayout(top)
         top_lay.setContentsMargins(4, 4, 4, 4)
@@ -182,7 +191,6 @@ class MainWindow(QMainWindow):
 
         # Metric cards row
         cards_box = QGroupBox("Live Measurements")
-        cards_box.setStyleSheet(f"QGroupBox {{ border: 1px solid #2a4a7f; border-radius:6px; color: {Palette.TEXT_DIM}; }}")
         cards_box.setFixedHeight(100)
         cards_lay = QHBoxLayout(cards_box)
         cards_lay.setContentsMargins(6, 14, 6, 6)
@@ -199,38 +207,15 @@ class MainWindow(QMainWindow):
         right_lay.addWidget(self._plot_panel, stretch=1)
 
         top_lay.addWidget(right, stretch=0)
-        outer_split.addWidget(top)
+        top_v.addWidget(top)
+        outer_split.addWidget(top_container)
 
         # ---- Bottom: tabbed panel ----
         self._tab_widget = QTabWidget()
-        self._tab_widget.setStyleSheet(
-            f"""
-            QTabWidget::pane {{
-                border: 1px solid #2a4a7f;
-                border-radius: 0 0 6px 6px;
-            }}
-            QTabBar::tab {{
-                background-color: {Palette.BG_CARD};
-                color: {Palette.TEXT_DIM};
-                padding: 5px 16px;
-                border: 1px solid #2a4a7f;
-                border-bottom: none;
-                border-radius: 4px 4px 0 0;
-                min-width: 120px;
-            }}
-            QTabBar::tab:selected {{
-                background-color: {Palette.BG_PANEL};
-                color: {Palette.TEXT};
-            }}
-            QTabBar::tab:hover {{
-                background-color: #1a3a6a;
-            }}
-            """
-        )
 
         # Tab 1: Anomaly log
         self._anomaly_panel = AnomalyPanel()
-        self._tab_widget.addTab(self._anomaly_panel, "Anomaly Log")
+        self._tab_widget.addTab(self._anomaly_panel, "⚡  Anomaly Log")
 
         # Tab 2: Events (list + detail side by side)
         events_widget = QWidget()
@@ -238,14 +223,14 @@ class MainWindow(QMainWindow):
         events_lay.setContentsMargins(4, 4, 4, 4)
         events_lay.setSpacing(6)
 
-        self._event_list_panel = EventListPanel()
+        self._event_list_panel  = EventListPanel()
         self._event_detail_widget = EventDetailWidget()
         events_lay.addWidget(self._event_list_panel, stretch=3)
         events_lay.addWidget(self._event_detail_widget, stretch=0)
         self._event_list_panel.event_selected.connect(self._event_detail_widget.show_event)
-        self._tab_widget.addTab(events_widget, "Events  🎬")
+        self._tab_widget.addTab(events_widget, "🎬  Event Clips")
 
-        self._tab_widget.setFixedHeight(220)
+        self._tab_widget.setFixedHeight(240)
         outer_split.addWidget(self._tab_widget)
 
         outer_split.setStretchFactor(0, 4)
@@ -317,6 +302,16 @@ class MainWindow(QMainWindow):
         self._lbl_track.setText(f"Track: {setup.track_name}")
         self.setWindowTitle(f"OHE — {setup.track_name}")
 
+        # Update session info bar
+        source = setup.video_path or f"camera:{setup.camera_index}"
+        self._session_info_bar.update_session(
+            track_name=setup.track_name,
+            source=source,
+            gps_mode=setup.gps_mode,
+            speed_mode=setup.speed_mode,
+            model_version=self._cfg.model_version,
+        )
+
         self._act_start.setEnabled(False)
         self._act_stop.setEnabled(True)
         self._act_export.setEnabled(False)
@@ -324,9 +319,11 @@ class MainWindow(QMainWindow):
         self._plot_panel.clear()
         self._anomaly_panel.clear()
         self._event_list_panel.clear()
+        self._tab_widget.setTabText(1, "🎬  Event Clips")
         self._progress.setValue(0)
         self._lbl_events.setText("Clips: 0")
         self._lbl_anoms.setText("Anomalies: 0")
+        self._video_panel.set_status("STARTING…", Palette.ACCENT2)
 
         self._worker = PipelineWorker(setup, self._cfg, self._cal, parent=self)
         self._worker.new_frame.connect(self._on_frame)
@@ -352,9 +349,11 @@ class MainWindow(QMainWindow):
             )
 
     def _on_calibrate(self) -> None:
+        # Use most recently configured video path if available
+        video_path = getattr(self, "_pending_video_path", "")
         wizard = CalibrationWizard(
-            video_path=self._video_path,
-            parent=self
+            video_path=video_path,
+            parent=self,
         )
         if wizard.exec() and wizard.result_calibration:
             self._cal = wizard.result_calibration
@@ -419,18 +418,18 @@ class MainWindow(QMainWindow):
 
     def _on_frame(self, frame: np.ndarray, frame_id: int, cand) -> None:
         self._video_panel.update_frame(frame)
-        self._lbl_frame.setText(f"Frame: {frame_id}")
+        self._lbl_frame.setText(f"Frame: {frame_id:,}")
 
     def _on_measurement(self, m: Measurement) -> None:
-        severity_colour = Palette.TEXT
+        stagger_col = Palette.TEXT
         if m.stagger_mm is not None:
             abs_s = abs(m.stagger_mm)
-            severity_colour = (
+            stagger_col = (
                 Palette.CRITICAL if abs_s >= 150 else
                 Palette.WARNING  if abs_s >= 100 else
                 Palette.OK
             )
-            self._card_stagger.set_value(m.stagger_mm, severity_colour)
+            self._card_stagger.set_value(m.stagger_mm, stagger_col)
         if m.diameter_mm is not None:
             d_colour = Palette.CRITICAL if m.diameter_mm < 8 else Palette.OK
             self._card_diameter.set_value(m.diameter_mm, d_colour)
@@ -438,12 +437,11 @@ class MainWindow(QMainWindow):
 
     def _on_anomaly(self, a: Anomaly) -> None:
         self._anomaly_panel.add_anomaly(a)
-        self._lbl_anoms.setText(f"Anomalies: {self._anomaly_panel.count}")
-        # Also add to event list panel
+        count = self._anomaly_panel.count
+        self._lbl_anoms.setText(f"Anomalies: {count}")
         self._event_list_panel.add_event(a)
-        # Switch to Events tab to draw attention
-        if self._tab_widget.currentIndex() == 0:
-            self._tab_widget.setTabText(1, f"Events  🎬 ({self._event_list_panel.count})")
+        # Update Events tab badge
+        self._tab_widget.setTabText(1, f"🎬  Event Clips ({self._event_list_panel.count})")
 
     def _on_event_clip(self, clip_path: str, anomaly: object) -> None:
         """Called when an event clip is written — update the event list."""
@@ -453,16 +451,19 @@ class MainWindow(QMainWindow):
             self._lbl_events.setText(f"Clips: {clip_count}")
 
     def _on_stats(self, stats: dict) -> None:
-        self._lbl_fps.setText(f"FPS: {stats['fps']:.1f}")
-        det_pct = stats.get("det_pct", 0)
+        fps     = stats.get("fps", 0.0)
+        progress = int(stats.get("progress_pct", 0))
+        det_pct = stats.get("det_pct", 0.0)
+        frame_ms = stats.get("frame_ms", 0.0)
+
+        self._lbl_fps.setText(f"FPS: {fps:.1f}")
         self._card_det_pct.set_value(
             det_pct,
             Palette.OK if det_pct >= 60 else Palette.WARNING,
         )
-        progress = int(stats.get("progress_pct", 0))
         self._progress.setValue(progress)
-        frame_ms = stats.get("frame_ms", 0)
-        self._progress.setFormat(f"{progress}%  |  {frame_ms:.1f}ms/frame")
+        self._progress.setFormat(f"{progress}%  |  {frame_ms:.1f}ms/f")
+        self._video_panel.set_status(f"PROCESSING  {fps:.0f} fps", Palette.OK)
 
     def _on_error(self, msg: str) -> None:
         QMessageBox.critical(self, "Pipeline Error", msg)
@@ -474,8 +475,12 @@ class MainWindow(QMainWindow):
         self._act_export.setEnabled(True)
         self._act_share.setEnabled(True)
         self._progress.setValue(100)
-        self._progress.setFormat("Done")
-        self._video_panel.show_placeholder("Processing complete — click Start for a new session or export data")
+        self._progress.setFormat("✓ Done")
+        self._video_panel.show_placeholder(
+            f"✓ Session complete — {self._current_track}\n"
+            "Click ▶ Start for a new session or use Export / Share"
+        )
+        self._video_panel.set_status("COMPLETE", Palette.OK)
         # Capture latest session id for share dialog
         track_root = self._cfg.track_dir_path(self._current_track) if self._current_track else None
         logs_dir   = (track_root / "logs") if track_root else self._cfg.session_dir_path()
