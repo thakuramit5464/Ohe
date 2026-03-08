@@ -9,9 +9,7 @@ ingestion:
 input:
   # 'video_file' or 'camera'
   mode: "video_file"
-  # OpenCV camera index for live camera mode
   camera_index: 0
-  # Target FPS for camera capture
   camera_fps: 25.0
 
 processing:
@@ -42,8 +40,10 @@ rules:
     max_warning_mm: 15.0
     max_critical_mm: 17.0
 
+# ---- Logging ----------------------------------------------------------------
 logging:
-  session_dir: "data/logs"
+  # Fallback session dir (individual sessions land under tracks/<name>/logs/)
+  session_dir: "~/Documents/ohe/sessions"
   sqlite_enabled: true
   csv_enabled: true
   csv_max_rows: 100000
@@ -54,13 +54,13 @@ event_video:
   enabled: true
   pre_frames: 90
   post_frames: 60
-  events_dir: "data/events"
+  # Fallback events dir (used only when no track name is set)
+  events_dir: "~/Documents/ohe/events"
   video_fps: 25.0
 
 # ---- Geolocation ------------------------------------------------------------
 geo:
   enabled: true
-  # 'simulated' or 'live'
   mode: "simulated"
   simulated_speed_kmh: 60.0
   origin_latitude: 28.6139
@@ -68,19 +68,17 @@ geo:
 
 # ---- Vehicle speed ----------------------------------------------------------
 speed:
-  # 'simulated' or 'live'
   mode: "simulated"
   simulated_base_kmh: 60.0
-  # Max random jitter per frame (km/h) for realistic variation
   simulated_jitter_kmh: 5.0
 
-# ---- Video / training directory ---------------------------------------------
+# ---- Data directories -------------------------------------------------------
 video_directory:
-  training_videos_dir: "data/videos"
-  frames_dir: "data/frames"
-  models_dir: "data/models"
+  training_videos_dir: "~/Documents/ohe/videos"
+  frames_dir: "~/Documents/ohe/frames"
+  models_dir: "~/Documents/ohe/models"
   # Root directory for track-scoped test run data
-  tracks_dir: "data/tracks"
+  tracks_dir: "~/Documents/ohe/tracks"
 
 # ---- Algorithm version ------------------------------------------------------
 model_version: "classical-v1"

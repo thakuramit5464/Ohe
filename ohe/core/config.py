@@ -202,36 +202,49 @@ class AppConfig(BaseModel):
     model_version: str = "classical-v1"
     """Detection algorithm / model version string stored in every anomaly log."""
 
-    def events_dir_path(self) -> Path:
-        """Resolve event clips directory (fallback when no track name)."""
+    # ------------------------------------------------------------------
+    # Internal: path resolver
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_data_path(raw: str) -> Path:
+        """
+        Resolve a data path string to an absolute Path.
+
+        Rules (in priority order):
+        1. Already absolute  →  use as-is.
+        2. Starts with ``~`` →  expand home directory (e.g. ``~/Documents/ohe``
+                                  becomes ``C:\\Users\\<name>\\Documents\\ohe``).
+        3. Relative           →  resolve relative to the project root (dev mode)
+                                  or AppData\\Roaming\\OHE (frozen exe).
+        """
         import sys
-        p = Path(self.event_video.events_dir)
+        p = Path(raw)
         if p.is_absolute():
             return p
+        if raw.startswith("~"):
+            return p.expanduser()
+        # Relative path
         if getattr(sys, "frozen", False):
-            events = Path.home() / "AppData" / "Roaming" / "OHE" / "events"
-            events.mkdir(parents=True, exist_ok=True)
-            return events
-        return _PROJECT_ROOT / p
+            return Path.home() / "AppData" / "Roaming" / "OHE" / raw
+        return _PROJECT_ROOT / raw
+
+    def events_dir_path(self) -> Path:
+        """Resolve event clips directory (fallback when no track name)."""
+        return self._resolve_data_path(self.event_video.events_dir)
 
     def track_dir_path(self, track_name: str) -> Path:
         """Return the root directory for a named track / test run.
 
         Structure::
 
-            data/tracks/<track_name>/
+            <tracks_dir>/<track_name>/
                 events/
                 logs/
                 reports/
                 videos/
         """
-        import sys
-        base = Path(self.video_directory.tracks_dir)
-        if not base.is_absolute():
-            if getattr(sys, "frozen", False):
-                base = Path.home() / "AppData" / "Roaming" / "OHE" / "tracks"
-            else:
-                base = _PROJECT_ROOT / base
+        base = self._resolve_data_path(self.video_directory.tracks_dir)
         return base / track_name
 
     def ensure_track_dirs(self, track_name: str) -> Path:
@@ -244,12 +257,12 @@ class AppConfig(BaseModel):
     def ensure_data_dirs(self) -> None:
         """Create all base data directories if they don't exist."""
         dirs = [
-            self.session_dir_path(),
+            self._resolve_data_path(self.logging.session_dir),
             self.events_dir_path(),
-            _PROJECT_ROOT / self.video_directory.training_videos_dir,
-            _PROJECT_ROOT / self.video_directory.frames_dir,
-            _PROJECT_ROOT / self.video_directory.models_dir,
-            _PROJECT_ROOT / self.video_directory.tracks_dir,
+            self._resolve_data_path(self.video_directory.training_videos_dir),
+            self._resolve_data_path(self.video_directory.frames_dir),
+            self._resolve_data_path(self.video_directory.models_dir),
+            self._resolve_data_path(self.video_directory.tracks_dir),
         ]
         for d in dirs:
             try:
