@@ -180,7 +180,10 @@ class ShareDialog(QDialog):
         return files
 
     def _export_to_folder(self) -> None:
-        dest = QFileDialog.getExistingDirectory(self, "Choose destination folder")
+        default_docs = str(Path.home() / "Documents")
+        dest = QFileDialog.getExistingDirectory(
+            self, "Choose destination folder", default_docs
+        )
         if not dest:
             return
         dest_path = Path(dest)
@@ -207,7 +210,7 @@ class ShareDialog(QDialog):
 
     def _export_zip(self) -> None:
         sid = self._session_id or "session"
-        default_name = str(Path.home() / "Desktop" / f"{sid}_export.zip")
+        default_name = str(Path.home() / "Documents" / f"{sid}_export.zip")
         zip_path, _ = QFileDialog.getSaveFileName(
             self, "Save ZIP archive", default_name, "ZIP Archives (*.zip)"
         )
