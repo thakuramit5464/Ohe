@@ -1,0 +1,33 @@
+{
+  "session": {
+    "session_id": "20260309T100953_4da63b",
+    "source": "video\\inspection_visualized.mp4",
+    "started_at_ms": 1773031193917.3562,
+    "ended_at_ms": 1773031218485.292,
+    "total_frames": 5270,
+    "anomaly_count": 13,
+    "event_clip_count": 0
+  },
+  "detection": {
+    "frames_with_measurement": 13,
+    "detection_rate_pct": 0.25,
+    "avg_confidence": 0.0011
+  },
+  "stagger_mm": {
+    "avg": -57.862,
+    "min": -88.2,
+    "max": -39.45
+  },
+  "diameter_mm": {
+    "avg": 0.639,
+    "min": 0.248,
+    "max": 1.742
+  },
+  "anomaly_breakdown": [
+    {
+      "anomaly_type": "DIAMETER_LOW",
+      "severity": "CRITICAL",
+      "count": 13
+    }
+  ]
+}

@@ -182,9 +182,10 @@ def process_cmd(video, config_path, frame_skip, max_frames, log_level, export):
         click.echo("\nExporting summary...")
         try:
             exp = SessionExporter(session_logger.db_path)
-            csv_out, json_out = exp.export_all()
+            csv_out, json_out, events_out = exp.export_all()
             click.echo(f"  Export CSV  : {csv_out}")
             click.echo(f"  Summary JSON: {json_out}")
+            click.echo(f"  Events JSON : {events_out}")
         except Exception as e:
             click.echo(f"  Export failed: {e}")
 
