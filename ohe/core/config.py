@@ -183,6 +183,58 @@ class VideoDirectoryConfig(BaseModel):
     """Root directory for track-scoped test run data."""
 
 
+class MastDetectionConfig(BaseModel):
+    """Classical CV mast detection parameters."""
+    enabled: bool = True
+    """Toggle mast detection on/off."""
+
+    # Vertical edge sensitivity
+    sobel_ksize: int = Field(3, ge=1)
+    """Kernel size for Sobel X operator."""
+    edge_threshold: int = Field(80, ge=0, le=255)
+    """Binary threshold applied after Sobel."""
+
+    # Contour / shape filters
+    min_contour_area: int = Field(500, ge=1)
+    """Minimum bounding-box area (px^2) to consider a mast candidate."""
+    min_aspect_ratio: float = Field(2.5, gt=0)
+    """Minimum height/width ratio — masts are tall and narrow."""
+    max_aspect_ratio: float = Field(30.0, gt=0)
+    """Maximum height/width ratio — reject excessively thin artefacts."""
+
+    # Lateral zone filter (fraction of frame width)
+    side_zone_fraction: float = Field(0.35, gt=0, le=0.5)
+    """Only accept masts within this fraction of left/right frame edge."""
+
+    # Temporal consistency
+    min_frames_to_confirm: int = Field(3, ge=1)
+    """Number of consecutive frames a candidate must appear before confirmed."""
+    iou_threshold: float = Field(0.25, ge=0.0, le=1.0)
+    """Minimum IoU to match a candidate bbox across frames."""
+
+
+class ChainageConfig(BaseModel):
+    """Chainage (distance along track) estimation parameters."""
+    speed_source: str = "config"
+    """'config' — use simulated_speed_kmh, 'pipeline' — accept per-frame speed."""
+    simulated_speed_kmh: float = Field(60.0, ge=0)
+    """Constant speed used when speed_source == 'config'."""
+    initial_chainage_m: float = 0.0
+    """Starting chainage value for the session (metres)."""
+
+
+class LaserHeightConfig(BaseModel):
+    """Wire height measurement from laser sensor."""
+    mode: str = "simulated"
+    """'simulated' or 'real'. Real mode accepts distance from external sensor."""
+    sensor_mount_height_m: float = Field(6.5, gt=0)
+    """Height of the laser sensor above the rail head (metres)."""
+    nominal_height_m: float = Field(5.25, gt=0)
+    """Nominal wire height used in simulated mode (metres)."""
+    noise_std_m: float = Field(0.015, ge=0)
+    """Standard deviation of Gaussian noise added in simulated mode (metres)."""
+
+
 # ---------------------------------------------------------------------------
 # Root config model
 # ---------------------------------------------------------------------------
@@ -199,6 +251,9 @@ class AppConfig(BaseModel):
     event_video: EventVideoConfig = EventVideoConfig()
     geo: GeoConfig = GeoConfig()
     video_directory: VideoDirectoryConfig = VideoDirectoryConfig()
+    mast_detection: MastDetectionConfig = MastDetectionConfig()
+    chainage: ChainageConfig = ChainageConfig()
+    laser_height: LaserHeightConfig = LaserHeightConfig()
     model_version: str = "classical-v1"
     """Detection algorithm / model version string stored in every anomaly log."""
 

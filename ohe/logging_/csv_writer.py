@@ -30,6 +30,11 @@ _FIELDNAMES = [
     "confidence",
     "anomaly_types",
     "anomaly_severities",
+    # ── Extended measurement fusion fields ──
+    "chainage_m",
+    "height_m",
+    "mast_event_flag",
+    "mast_spacing_m",
 ]
 
 
@@ -64,6 +69,15 @@ class CsvWriter:
             "confidence": f"{m.confidence:.4f}",
             "anomaly_types": ";".join(a.anomaly_type for a in anomalies),
             "anomaly_severities": ";".join(a.severity for a in anomalies),
+            # Extended fields
+            "chainage_m": f"{m.chainage_m:.3f}" if m.chainage_m is not None else "",
+            "height_m": f"{m.height_m:.4f}" if m.height_m is not None else "",
+            "mast_event_flag": "1" if m.mast_event is not None else "0",
+            "mast_spacing_m": (
+                f"{m.mast_event.mast_spacing_m:.3f}"
+                if m.mast_event is not None and m.mast_event.mast_spacing_m is not None
+                else ""
+            ),
         }
         self._writer.writerow(row)
         self._row_count += 1

@@ -89,3 +89,28 @@ ui:
   chart_history_frames: 500
   overlay_wire_colour: [0, 255, 0]
   overlay_centre_colour: [0, 0, 255]
+
+# ---- Mast detection ---------------------------------------------------------
+mast_detection:
+  enabled: true
+  sobel_ksize: 3
+  edge_threshold: 80
+  min_contour_area: 500
+  min_aspect_ratio: 2.5
+  max_aspect_ratio: 30.0
+  side_zone_fraction: 0.35
+  min_frames_to_confirm: 3
+  iou_threshold: 0.25
+
+# ---- Chainage estimator -----------------------------------------------------
+chainage:
+  speed_source: "config"         # 'config' or 'pipeline'
+  simulated_speed_kmh: 60.0
+  initial_chainage_m: 0.0
+
+# ---- Laser height sensor ----------------------------------------------------
+laser_height:
+  mode: "simulated"              # 'simulated' or 'real'
+  sensor_mount_height_m: 6.5
+  nominal_height_m: 5.25
+  noise_std_m: 0.015

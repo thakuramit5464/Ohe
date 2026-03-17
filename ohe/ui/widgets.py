@@ -409,3 +409,94 @@ class HDivider(QFrame):
         self.setFrameShape(QFrame.Shape.HLine)
         self.setStyleSheet(f"color: {Palette.BORDER};")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+
+# ---------------------------------------------------------------------------
+# MeasurementPanel — horizontal row of live OHE metric cards
+# ---------------------------------------------------------------------------
+
+class MeasurementPanel(QWidget):
+    """Horizontal panel showing the five live OHE measurement cards.
+
+    Cards:
+        HEIGHT      — wire height above rail (m)
+        STAGGER     — lateral offset from track centre (mm)
+        DIAMETER    — contact wire diameter (mm)
+        CHAINAGE    — distance travelled (m)
+        MAST SPACING — last mast-to-mast distance (m)
+
+    Usage::
+        panel = MeasurementPanel()
+        panel.update(measurement)  # pass a Measurement object each frame
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setStyleSheet("background: transparent;")
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+
+        self._height_card   = MetricCard("HEIGHT",       "m")
+        self._stagger_card  = MetricCard("STAGGER",      "mm")
+        self._diameter_card = MetricCard("DIAMETER",     "mm")
+        self._chainage_card = MetricCard("CHAINAGE",     "m")
+        self._spacing_card  = MetricCard("MAST SPACING", "m")
+
+        for card in (
+            self._height_card, self._stagger_card, self._diameter_card,
+            self._chainage_card, self._spacing_card,
+        ):
+            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            row.addWidget(card)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def update(self, measurement) -> None:   # type: ignore[override]
+        """Refresh all cards from a Measurement object.
+
+        Args:
+            measurement: :class:`ohe.core.models.Measurement` instance.
+        """
+        # HEIGHT
+        self._height_card.set_value(
+            measurement.height_m,
+            Palette.OK if measurement.height_m is not None else Palette.TEXT_DIM,
+        )
+
+        # STAGGER
+        if measurement.stagger_mm is not None:
+            s = measurement.stagger_mm
+            col = Palette.OK if abs(s) < 130 else (
+                Palette.WARNING if abs(s) < 180 else Palette.CRITICAL
+            )
+            self._stagger_card.set_value(s, col)
+        else:
+            self._stagger_card.set_value(None)
+
+        # DIAMETER
+        if measurement.diameter_mm is not None:
+            d = measurement.diameter_mm
+            col = Palette.CRITICAL if d < 8 else (
+                Palette.WARNING if d < 10 else Palette.OK
+            )
+            self._diameter_card.set_value(d, col)
+        else:
+            self._diameter_card.set_value(None)
+
+        # CHAINAGE
+        self._chainage_card.set_value(
+            measurement.chainage_m,
+            Palette.TEXT,
+        )
+
+        # LAST MAST SPACING
+        if measurement.mast_event is not None and measurement.mast_event.mast_spacing_m is not None:
+            self._spacing_card.set_value(
+                measurement.mast_event.mast_spacing_m, Palette.WARNING
+            )
+        # else: leave previous value visible (spacing only updates on mast event)
+

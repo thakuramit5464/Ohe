@@ -111,6 +111,30 @@ class WireCandidate:
 
 
 # ---------------------------------------------------------------------------
+# Mast detection layer
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MastEvent:
+    """A confirmed mast detection event."""
+
+    frame_id: int
+    timestamp_ms: float
+
+    chainage_m: float = 0.0
+    """Track chainage at which the mast was detected (metres)."""
+
+    confidence: float = 0.0
+    """Detection confidence [0.0, 1.0]."""
+
+    mast_spacing_m: Optional[float] = None
+    """Distance from the previous mast (metres). None for the first mast."""
+
+    # Bounding box of the detected mast in original (full-frame) pixel coordinates
+    mast_bbox: Optional[Tuple[int, int, int, int]] = None   # (x, y, w, h)
+
+
+# ---------------------------------------------------------------------------
 # Measurement layer
 # ---------------------------------------------------------------------------
 
@@ -135,6 +159,16 @@ class Measurement:
 
     # Wire centre in original frame coordinates
     wire_centre_px: Optional[Tuple[float, float]] = None    # (cx, cy)
+
+    # ── Extended fields added by measurement fusion ───────────────────────
+    height_m: Optional[float] = None
+    """Wire height above rail (metres), from laser height sensor."""
+
+    chainage_m: Optional[float] = None
+    """Current track chainage (metres)."""
+
+    mast_event: Optional["MastEvent"] = None
+    """Populated when a mast is confirmed in this frame."""
 
     def is_valid(self) -> bool:
         """Return True if both stagger and diameter are available."""
